@@ -1,0 +1,279 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  USER
+}
+
+enum PairLevel {
+  LEVEL_1
+  LEVEL_2
+  LEVEL_3
+}
+
+enum ServiceType {
+  REGULAR
+  SOLEMN
+  FOUR_PEOPLE
+  ADORATION
+}
+
+enum AssignmentRole {
+  GENERAL
+  CANDLE
+  INCENSE
+}
+
+enum ServiceStatus {
+  DRAFT
+  PUBLISHED
+  LOCKED
+  COMPLETED
+}
+
+enum BusyRequestStatus {
+  APPROVED
+  WAITLIST
+  CANCELLED
+}
+
+enum SwapRequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  CANCELLED
+}
+
+enum AttendanceStatus {
+  PRESENT
+  EXCUSED_ABSENCE
+  OVERSLEPT
+  LATE
+  NO_SHOW
+}
+
+model SystemSetting {
+  id               String   @id @default(cuid())
+  registrationOpen Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String?
+  email        String   @unique
+  phone        String?
+  passwordHash String?
+  role         UserRole @default(USER)
+  isActive     Boolean  @default(true)
+
+  profileCompleted Boolean @default(false)
+  approved         Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  pairMembers   PairMember[]
+  notifications Notification[]
+  scheduleAcks  ScheduleAck[]
+  sentSwaps     SwapRequest[] @relation("SwapRequester")
+
+  accounts Account[]
+  sessions Session[]
+}
+
+model Pair {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  level       PairLevel
+  totalPoints Decimal  @default(0) @db.Decimal(10, 2)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members      PairMember[]
+  assignments  Assignment[]
+  busyRequests BusyDayRequest[]
+  pointTxs     PointTransaction[]
+}
+
+model PairMember {
+  id       String  @id @default(cuid())
+  userId   String
+  pairId   String
+  isLeader Boolean @default(false)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pair Pair @relation(fields: [pairId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, pairId])
+}
+
+model Service {
+  id           String        @id @default(cuid())
+  title        String
+  type         ServiceType
+  startsAt     DateTime
+  endsAt       DateTime
+  points       Decimal       @db.Decimal(10, 2)
+  status       ServiceStatus @default(DRAFT)
+  isSundayAM   Boolean       @default(false)
+  isSaturdayPM Boolean       @default(false)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  assignments Assignment[]
+}
+
+model Assignment {
+  id        String         @id @default(cuid())
+  serviceId String
+  pairId    String
+  role      AssignmentRole
+  createdAt DateTime       @default(now())
+
+  service Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  pair    Pair    @relation(fields: [pairId], references: [id], onDelete: Cascade)
+
+  @@unique([serviceId, role])
+  @@index([pairId])
+}
+
+model BusyWindow {
+  id             String   @id @default(cuid())
+  weekStart      DateTime @unique
+  opensAt        DateTime
+  closesAt       DateTime?
+  maxPairsPerDay Int      @default(3)
+  isOpen         Boolean  @default(true)
+
+  requests BusyDayRequest[]
+}
+
+model BusyDayRequest {
+  id           String            @id @default(cuid())
+  busyWindowId String
+  pairId       String
+  busyDate     DateTime
+  queueOrder   Int
+  status       BusyRequestStatus
+
+  busyWindow BusyWindow @relation(fields: [busyWindowId], references: [id], onDelete: Cascade)
+  pair       Pair       @relation(fields: [pairId], references: [id], onDelete: Cascade)
+
+  @@unique([busyWindowId, pairId, busyDate])
+}
+
+model SwapRequest {
+  id              String            @id @default(cuid())
+  serviceId       String
+  assignmentId    String
+  requesterUserId String
+  targetPairId    String
+  message         String?
+  status          SwapRequestStatus @default(PENDING)
+  createdAt       DateTime          @default(now())
+
+  requester User @relation("SwapRequester", fields: [requesterUserId], references: [id], onDelete: Cascade)
+}
+
+model AttendanceRecord {
+  id           String           @id @default(cuid())
+  serviceId    String
+  assignmentId String           @unique
+  pairId       String
+  status       AttendanceStatus
+  pointDelta   Decimal          @default(0) @db.Decimal(10, 2)
+  note         String?
+  createdAt    DateTime         @default(now())
+}
+
+model PointTransaction {
+  id        String   @id @default(cuid())
+  pairId    String
+  serviceId String?
+  delta     Decimal  @db.Decimal(10, 2)
+  reason    String
+  createdAt DateTime @default(now())
+
+  pair Pair @relation(fields: [pairId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  body      String
+  isRead    Boolean  @default(false)
+  dedupeKey String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dedupeKey])
+}
+
+model ScheduleAck {
+  id        String   @id @default(cuid())
+  userId    String
+  weekStart DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, weekStart])
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  actorUserId String?
+  action      String
+  entityType  String
+  entityId    String
+  metadata    Json?
+  createdAt   DateTime @default(now())
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
