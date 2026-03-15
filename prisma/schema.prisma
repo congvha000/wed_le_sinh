@@ -85,6 +85,7 @@ model User {
   notifications Notification[]
   scheduleAcks  ScheduleAck[]
   sentSwaps     SwapRequest[] @relation("SwapRequester")
+  busyRequests  BusyDayRequest[]
 
   accounts Account[]
   sessions Session[]
@@ -162,14 +163,17 @@ model BusyDayRequest {
   id           String            @id @default(cuid())
   busyWindowId String
   pairId       String
+  userId       String?
   busyDate     DateTime
   queueOrder   Int
   status       BusyRequestStatus
 
   busyWindow BusyWindow @relation(fields: [busyWindowId], references: [id], onDelete: Cascade)
   pair       Pair       @relation(fields: [pairId], references: [id], onDelete: Cascade)
+  user       User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@unique([busyWindowId, pairId, busyDate])
+  @@unique([busyWindowId, userId])
 }
 
 model SwapRequest {

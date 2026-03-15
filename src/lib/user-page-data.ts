@@ -21,13 +21,20 @@ export async function requireUserContext() {
   return ctx;
 }
 
+function toDateKey(date: Date) {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export async function getUserPageData() {
   const ctx = await requireUserContext();
   const nextWeekStart = getNextWeekStart();
   const rollingStart = addMonths(startOfMonth(new Date()), -11);
   const rollingEnd = addMonths(startOfMonth(new Date()), 1);
 
-  const [pairMember, busyWindow] = await Promise.all([
+  const [pairMember, busyWindow] = (await Promise.all([
     prisma.pairMember.findFirst({
       where: { userId: ctx.user.id },
       include: {
@@ -61,18 +68,25 @@ export async function getUserPageData() {
                   weekStart: nextWeekStart,
                 },
               },
-              orderBy: {
-                busyDate: "asc",
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                  },
+                },
               },
+              orderBy: [{ busyDate: "asc" }, { queueOrder: "asc" }],
             },
           },
         },
       },
-    }),
+    } as any),
     prisma.busyWindow.findUnique({
       where: { weekStart: nextWeekStart },
     }),
-  ]);
+  ])) as [any, any];
 
   const pair = pairMember?.pair ?? null;
 
@@ -133,6 +147,16 @@ export async function getUserPageData() {
   const partnerNames =
     pair?.members.map((member) => member.user.name || member.user.email).join(" · ") ?? "Chưa có cặp";
 
+  const partnerMember = pair?.members.find((member) => member.userId !== ctx.user.id) ?? null;
+  const currentUserBusyRequest =
+    pair?.busyRequests.find((item) => item.userId === ctx.user.id) ?? null;
+  const partnerBusyRequest =
+    pair?.busyRequests.find((item) => item.userId && item.userId !== ctx.user.id) ?? null;
+  const legacyBusyRequests = pair?.busyRequests.filter((item) => !item.userId) ?? [];
+  const pairBusyDaysCount = pair
+    ? pair.busyRequests.reduce((set, item) => set.add(toDateKey(item.busyDate)), new Set<string>()).size
+    : 0;
+
   return {
     ctx,
     pair,
@@ -143,5 +167,10 @@ export async function getUserPageData() {
     currentMonthPoints,
     bestMonth,
     partnerNames,
+    pairBusyDaysCount,
+    currentUserBusyRequest,
+    partnerBusyRequest,
+    partnerName: partnerMember?.user.name || partnerMember?.user.email || null,
+    legacyBusyDates: legacyBusyRequests.map((item) => item.busyDate),
   };
 }

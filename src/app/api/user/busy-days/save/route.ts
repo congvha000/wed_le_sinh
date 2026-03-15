@@ -7,16 +7,25 @@ export async function POST(req: Request) {
   if (authResult.error) return authResult.error;
 
   try {
-    const { pairId, weekStart, dates } = await req.json();
+    const { pairId, weekStart, date } = await req.json();
     const normalizedPairId = String(pairId ?? "").trim();
-    const normalizedDates = Array.isArray(dates) ? Array.from(new Set(dates.map((item) => String(item)))) : [];
+    const normalizedDate = String(date ?? "").trim();
 
-    if (!normalizedPairId || !weekStart) return Response.json({ error: "Thiếu thông tin cặp hoặc tuần đăng ký" }, { status: 400 });
-    if (normalizedDates.length > 2) return Response.json({ error: "Mỗi cặp chỉ được đăng ký tối đa 2 ngày bận" }, { status: 400 });
+    if (!normalizedPairId || !weekStart) {
+      return Response.json({ error: "Thiếu thông tin cặp hoặc tuần đăng ký" }, { status: 400 });
+    }
 
     const weekStartDate = parseWeekStart(weekStart);
     const weekEndDate = new Date(weekStartDate);
     weekEndDate.setDate(weekStartDate.getDate() + 7);
+
+    const selectedDate = normalizedDate ? startOfDay(new Date(normalizedDate)) : null;
+    if (selectedDate && Number.isNaN(selectedDate.getTime())) {
+      return Response.json({ error: "Ngày đăng ký không hợp lệ" }, { status: 400 });
+    }
+    if (selectedDate && (selectedDate < weekStartDate || selectedDate >= weekEndDate)) {
+      return Response.json({ error: "Ngày bận phải nằm trong tuần mục tiêu" }, { status: 400 });
+    }
 
     const [pairMember, busyWindow] = await Promise.all([
       prisma.pairMember.findFirst({ where: { userId: authResult.user.id, pairId: normalizedPairId } }),
@@ -24,32 +33,71 @@ export async function POST(req: Request) {
     ]);
 
     if (!pairMember) return Response.json({ error: "Bạn không thuộc cặp này" }, { status: 403 });
-    if (!busyWindow || !busyWindow.isOpen) return Response.json({ error: "Đăng ký ngày bận hiện không mở" }, { status: 400 });
-
-    const parsedDates = normalizedDates.map((item) => startOfDay(new Date(item)));
-    if (parsedDates.some((date) => Number.isNaN(date.getTime()))) return Response.json({ error: "Có ngày đăng ký không hợp lệ" }, { status: 400 });
-    if (parsedDates.some((date) => date < weekStartDate || date >= weekEndDate)) return Response.json({ error: "Ngày bận phải nằm trong tuần mục tiêu" }, { status: 400 });
+    if (!busyWindow || !busyWindow.isOpen) {
+      return Response.json({ error: "Đăng ký ngày bận hiện không mở" }, { status: 400 });
+    }
 
     await prisma.$transaction(async (tx) => {
-      await tx.busyDayRequest.deleteMany({ where: { busyWindowId: busyWindow.id, pairId: normalizedPairId } });
+      await tx.busyDayRequest.deleteMany({
+        where: {
+          busyWindowId: busyWindow.id,
+          pairId: normalizedPairId,
+          userId: null,
+        } as any,
+      });
 
-      for (const date of parsedDates.sort((a, b) => a.getTime() - b.getTime())) {
-        const existingForDay = await tx.busyDayRequest.findMany({ where: { busyWindowId: busyWindow.id }, orderBy: { queueOrder: "asc" } });
-        const sameDayItems = existingForDay.filter((item) => sameDate(item.busyDate, date));
-        if (sameDayItems.length >= busyWindow.maxPairsPerDay) {
-          throw new Error(`Ngày ${date.toLocaleDateString("vi-VN")} đã đủ số cặp bận`);
+      const pairRequests = (await tx.busyDayRequest.findMany({
+        where: {
+          busyWindowId: busyWindow.id,
+          pairId: normalizedPairId,
+        },
+        orderBy: [{ busyDate: "asc" }, { queueOrder: "asc" }],
+      })) as Array<any>;
+
+      const currentRequest = pairRequests.find((item) => item.userId === authResult.user.id) ?? null;
+      const partnerRequest = pairRequests.find((item) => item.userId && item.userId !== authResult.user.id) ?? null;
+
+      if (!selectedDate) {
+        if (currentRequest) {
+          await tx.busyDayRequest.delete({ where: { id: currentRequest.id } });
         }
-
-        await tx.busyDayRequest.create({
-          data: {
-            busyWindowId: busyWindow.id,
-            pairId: normalizedPairId,
-            busyDate: date,
-            queueOrder: sameDayItems.length + 1,
-            status: BusyRequestStatus.APPROVED,
-          },
-        });
+        return;
       }
+
+      if (partnerRequest && sameDate(partnerRequest.busyDate, selectedDate)) {
+        throw new Error("Người cùng cặp đã chọn ngày này. Mỗi người cần chọn 1 ngày khác nhau.");
+      }
+
+      if (currentRequest && sameDate(currentRequest.busyDate, selectedDate)) {
+        return;
+      }
+
+      if (currentRequest) {
+        await tx.busyDayRequest.delete({ where: { id: currentRequest.id } });
+      }
+
+      const existingForDay = await tx.busyDayRequest.findMany({
+        where: { busyWindowId: busyWindow.id },
+        orderBy: { queueOrder: "asc" },
+      });
+      const sameDayItems = existingForDay.filter((item) => sameDate(item.busyDate, selectedDate));
+
+      if (sameDayItems.length >= busyWindow.maxPairsPerDay) {
+        throw new Error(`Ngày ${selectedDate.toLocaleDateString("vi-VN")} đã đủ ${busyWindow.maxPairsPerDay} cặp bận`);
+      }
+
+      const nextQueueOrder = sameDayItems.reduce((max, item) => Math.max(max, item.queueOrder), 0) + 1;
+
+      await tx.busyDayRequest.create({
+        data: {
+          busyWindowId: busyWindow.id,
+          pairId: normalizedPairId,
+          userId: authResult.user.id,
+          busyDate: selectedDate,
+          queueOrder: nextQueueOrder,
+          status: BusyRequestStatus.APPROVED,
+        } as any,
+      });
     });
 
     return Response.json({ ok: true });

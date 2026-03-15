@@ -28,6 +28,7 @@ export default async function AdminBusyDaysPage() {
                 requests: data.busyWindow.requests.map((request) => ({
                   id: request.id,
                   pairName: request.pair.name,
+                  selectedBy: request.user?.name || request.user?.email || "Dữ liệu cũ",
                   busyDate: request.busyDate.toISOString(),
                   queueOrder: request.queueOrder,
                 })),

@@ -40,7 +40,7 @@ export default async function DashboardOverviewPage() {
         <StatCard label="Cấp cặp" value={data.pair?.level?.replace("LEVEL_", "LV") || "--"} note="Cấp hiện tại" accent="accent-blue" />
         <StatCard label="Điểm hiện tại" value={data.pair ? Number(data.pair.totalPoints) : 0} note="Điểm tích lũy" accent="accent-green" />
         <StatCard label="Lịch sắp tới" value={data.pair?.assignments.length || 0} note="Buổi đã phân công" accent="accent-purple" />
-        <StatCard label="Ngày bận tuần sau" value={`${data.pair?.busyRequests.length || 0}/2`} note="Số ngày đã đăng ký" accent="accent-yellow" />
+        <StatCard label="Ngày bận tuần sau" value={`${data.pairBusyDaysCount}/2`} note="Số ngày bận của cả cặp" accent="accent-yellow" />
       </section>
 
       <section className="card section-pad stack-md">
@@ -56,7 +56,7 @@ export default async function DashboardOverviewPage() {
           </Link>
           <Link href="/dashboard/busy-days" className="quick-link-card">
             <div className="list-title">Ngày bận</div>
-            <div className="list-subtitle">Đăng ký tối đa 2 ngày.</div>
+            <div className="list-subtitle">Mỗi người chọn 1 ngày bận.</div>
           </Link>
           <Link href="/dashboard/stats" className="quick-link-card">
             <div className="list-title">Thống kê điểm</div>

@@ -109,6 +109,25 @@ export default function AdminPairsPanel({ pairs, unpairedUsers }: Props) {
     }
   }
 
+  async function handleUnassignMembers(targetPairId: string) {
+    try {
+      setLoading(`unassign-${targetPairId}`);
+      setMessage({ type: "", text: "" });
+      await postJson("/api/admin/pairs/unassign-members", {
+        pairId: targetPairId,
+      });
+      toast.success("Đã tách cặp. Bạn có thể gán lại thành viên khác.");
+      setMessage({ type: "success", text: "Đã tách cặp. Bạn có thể gán lại thành viên khác." });
+      router.refresh();
+    } catch (error) {
+      const text = error instanceof Error ? error.message : "Không thể tách cặp.";
+      toast.error(text);
+      setMessage({ type: "error", text });
+    } finally {
+      setLoading("");
+    }
+  }
+
   return (
     <div className="dashboard-grid two-col-layout">
       <section className="card section-pad stack-md">
@@ -192,25 +211,39 @@ export default function AdminPairsPanel({ pairs, unpairedUsers }: Props) {
           <div className="empty-state">Chưa có cặp nào được tạo.</div>
         ) : (
           <div className="stack-sm">
-            {pairs.map((pair) => (
-              <div key={pair.id} className="list-card" style={{ alignItems: "flex-start" }}>
-                <div>
-                  <div className="list-title">
-                    {pair.name} - {getPairLevelLabel(pair.level)}
+            {pairs.map((pair) => {
+              const loadingKey = `unassign-${pair.id}`;
+              return (
+                <div key={pair.id} className="list-card" style={{ alignItems: "flex-start" }}>
+                  <div style={{ flex: 1 }}>
+                    <div className="list-title">
+                      {pair.name} - {getPairLevelLabel(pair.level)}
+                    </div>
+                    <div className="list-subtitle">
+                      Điểm: {pair.totalPoints} · {pair.active ? "Đang hoạt động" : "Đã khóa"}
+                    </div>
+                    <div className="list-meta">
+                      {pair.members.length === 0
+                        ? "Chưa có thành viên"
+                        : pair.members
+                            .map((member) => `${member.name || member.email}${member.isLeader ? " (Trưởng)" : ""}`)
+                            .join(" · ")}
+                    </div>
                   </div>
-                  <div className="list-subtitle">
-                    Điểm: {pair.totalPoints} · {pair.active ? "Đang hoạt động" : "Đã khóa"}
-                  </div>
-                  <div className="list-meta">
-                    {pair.members.length === 0
-                      ? "Chưa có thành viên"
-                      : pair.members
-                          .map((member) => `${member.name || member.email}${member.isLeader ? " (Trưởng)" : ""}`)
-                          .join(" · ")}
-                  </div>
+
+                  {pair.members.length > 0 ? (
+                    <button
+                      className="button-secondary"
+                      type="button"
+                      onClick={() => handleUnassignMembers(pair.id)}
+                      disabled={loading === loadingKey}
+                    >
+                      {loading === loadingKey ? "Đang tách..." : "Tách cặp"}
+                    </button>
+                  ) : null}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>

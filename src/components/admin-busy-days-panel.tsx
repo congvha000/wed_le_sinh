@@ -12,6 +12,7 @@ type BusyWindowItem = {
   requests: {
     id: string;
     pairName: string;
+    selectedBy: string;
     busyDate: string;
     queueOrder: number;
   }[];
@@ -101,9 +102,10 @@ export default function AdminBusyDaysPanel({ nextWeekStart, busyWindow }: Props)
 
         <div className="note-box">
           Quy định:
-          <br />- Mỗi cặp chỉ được đăng ký tối đa 2 ngày bận
+          <br />- Mỗi người trong cặp được chọn tối đa 1 ngày bận
+          <br />- Mỗi cặp tối đa 2 ngày bận, 2 người chọn 2 ngày khác nhau
           <br />- Mỗi ngày chỉ tối đa 3 cặp bận
-          <br />- Ai đăng ký trước được giữ chỗ trước
+          <br />- Ai lưu trước được giữ chỗ trước
         </div>
 
         <div className="list-card">
@@ -162,7 +164,8 @@ export default function AdminBusyDaysPanel({ nextWeekStart, busyWindow }: Props)
                   <div key={item.id} className="list-card">
                     <div>
                       <div className="list-title">{item.pairName}</div>
-                      <div className="list-subtitle">Thứ tự đăng ký: {item.queueOrder}</div>
+                      <div className="list-subtitle">Người chọn: {item.selectedBy}</div>
+                      <div className="list-meta">Thứ tự đăng ký: {item.queueOrder}</div>
                     </div>
                   </div>
                 ))}

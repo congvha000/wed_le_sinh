@@ -19,9 +19,12 @@ export default async function DashboardBusyDaysPage() {
       <BusyRegistrationPanel
         pairId={data.pair?.id ?? null}
         pairName={data.pair?.name ?? null}
+        partnerName={data.partnerName}
         nextWeekStart={data.nextWeekStart.toISOString()}
         windowOpen={Boolean(data.busyWindow?.isOpen)}
-        registeredDates={(data.pair?.busyRequests ?? []).map((item) => item.busyDate.toISOString())}
+        selectedDate={data.currentUserBusyRequest?.busyDate.toISOString() ?? null}
+        partnerDate={data.partnerBusyRequest?.busyDate.toISOString() ?? null}
+        legacyBusyDates={data.legacyBusyDates.map((date) => date.toISOString())}
       />
     </WorkspaceShell>
   );

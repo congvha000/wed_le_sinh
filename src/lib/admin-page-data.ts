@@ -97,7 +97,7 @@ async function getUsersForAdmin() {
   });
 }
 
-async function getBusyWindowForNextWeek(nextWeekStart: Date) {
+async function getBusyWindowForNextWeek(nextWeekStart: Date): Promise<any> {
   return prisma.busyWindow.findUnique({
     where: { weekStart: nextWeekStart },
     include: {
@@ -107,6 +107,12 @@ async function getBusyWindowForNextWeek(nextWeekStart: Date) {
           pairId: true,
           busyDate: true,
           queueOrder: true,
+          user: {
+            select: {
+              name: true,
+              email: true,
+            },
+          },
           pair: {
             select: {
               name: true,
@@ -116,7 +122,7 @@ async function getBusyWindowForNextWeek(nextWeekStart: Date) {
         orderBy: [{ busyDate: "asc" }, { queueOrder: "asc" }],
       },
     },
-  });
+  } as any);
 }
 
 export async function requireAdminContext() {

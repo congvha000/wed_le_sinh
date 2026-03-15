@@ -6,9 +6,12 @@ import { useRouter } from "next/navigation";
 type BusyRegistrationPanelProps = {
   pairId: string | null;
   pairName: string | null;
+  partnerName: string | null;
   nextWeekStart: string;
   windowOpen: boolean;
-  registeredDates: string[];
+  selectedDate: string | null;
+  partnerDate: string | null;
+  legacyBusyDates: string[];
 };
 
 type StatusState = {
@@ -19,16 +22,23 @@ type StatusState = {
 export default function BusyRegistrationPanel({
   pairId,
   pairName,
+  partnerName,
   nextWeekStart,
   windowOpen,
-  registeredDates,
+  selectedDate,
+  partnerDate,
+  legacyBusyDates,
 }: BusyRegistrationPanelProps) {
   const router = useRouter();
-  const [selectedDates, setSelectedDates] = useState<string[]>(
-    registeredDates.map((date) => toInputDate(new Date(date))),
-  );
+  const [selectedBusyDate, setSelectedBusyDate] = useState<string>(selectedDate ? toInputDate(new Date(selectedDate)) : "");
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<StatusState>({ type: "", message: "" });
+
+  const partnerBusyDate = partnerDate ? toInputDate(new Date(partnerDate)) : "";
+  const legacyBusyDateSet = useMemo(
+    () => new Set(legacyBusyDates.map((date) => toInputDate(new Date(date)))),
+    [legacyBusyDates],
+  );
 
   const weekDates = useMemo(() => {
     const start = new Date(nextWeekStart);
@@ -53,19 +63,7 @@ export default function BusyRegistrationPanel({
 
   function toggleDate(value: string) {
     setStatus({ type: "", message: "" });
-
-    setSelectedDates((prev) => {
-      if (prev.includes(value)) {
-        return prev.filter((item) => item !== value);
-      }
-
-      if (prev.length >= 2) {
-        setStatus({ type: "error", message: "Mỗi cặp chỉ được chọn tối đa 2 ngày bận." });
-        return prev;
-      }
-
-      return [...prev, value].sort();
-    });
+    setSelectedBusyDate((prev) => (prev === value ? "" : value));
   }
 
   async function handleSave() {
@@ -79,6 +77,14 @@ export default function BusyRegistrationPanel({
       return;
     }
 
+    if (selectedBusyDate && partnerBusyDate && selectedBusyDate === partnerBusyDate) {
+      setStatus({
+        type: "error",
+        message: "Người cùng cặp đã chọn ngày này rồi. Mỗi người cần chọn 1 ngày khác nhau.",
+      });
+      return;
+    }
+
     setLoading(true);
     setStatus({ type: "", message: "" });
 
@@ -86,7 +92,7 @@ export default function BusyRegistrationPanel({
       const res = await fetch("/api/user/busy-days/save", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pairId, weekStart: nextWeekStart, dates: selectedDates }),
+        body: JSON.stringify({ pairId, weekStart: nextWeekStart, date: selectedBusyDate || null }),
       });
 
       const data = await res.json().catch(() => ({}));
@@ -104,6 +110,8 @@ export default function BusyRegistrationPanel({
       setLoading(false);
     }
   }
+
+  const pairBusyCount = Number(Boolean(selectedBusyDate)) + Number(Boolean(partnerBusyDate));
 
   return (
     <section className="card section-pad stack-md">
@@ -124,12 +132,20 @@ export default function BusyRegistrationPanel({
           <strong>{pairName || "Chưa có cặp"}</strong>
         </div>
         <div className="info-row">
-          <span>Số ngày được chọn</span>
-          <strong>{selectedDates.length}/2</strong>
+          <span>Ngày của bạn</span>
+          <strong>{selectedBusyDate ? formatInputDate(selectedBusyDate) : "Chưa chọn"}</strong>
         </div>
         <div className="info-row">
-          <span>Nguyên tắc</span>
-          <strong>Tối đa 2 ngày bận mỗi cặp</strong>
+          <span>Người cùng cặp</span>
+          <strong>{partnerName || "Chưa có"}</strong>
+        </div>
+        <div className="info-row">
+          <span>Ngày người cùng cặp chọn</span>
+          <strong>{partnerBusyDate ? formatInputDate(partnerBusyDate) : "Chưa chọn"}</strong>
+        </div>
+        <div className="info-row">
+          <span>Tổng ngày bận của cặp</span>
+          <strong>{pairBusyCount}/2</strong>
         </div>
       </div>
 
@@ -138,7 +154,9 @@ export default function BusyRegistrationPanel({
       ) : (
         <div className="date-choice-grid">
           {weekDates.map((item) => {
-            const checked = selectedDates.includes(item.value);
+            const checked = selectedBusyDate === item.value;
+            const partnerChecked = partnerBusyDate === item.value;
+            const isLegacyMarked = legacyBusyDateSet.has(item.value);
 
             return (
               <button
@@ -146,14 +164,17 @@ export default function BusyRegistrationPanel({
                 type="button"
                 className={`date-choice ${checked ? "is-selected" : ""}`}
                 onClick={() => toggleDate(item.value)}
-                disabled={!windowOpen}
+                disabled={!windowOpen || (partnerChecked && !checked)}
               >
                 <span className="date-choice-weekday">{item.weekday}</span>
                 <span className="date-choice-day">{item.day}</span>
                 <span className="date-choice-label">{item.fullLabel}</span>
                 <span className={`inline-badge ${checked ? "inline-badge-active" : ""}`}>
-                  {checked ? "Đã chọn" : "Chọn ngày"}
+                  {checked ? "Ngày của bạn" : partnerChecked ? "Người cùng cặp đã chọn" : "Chọn ngày"}
                 </span>
+                {!checked && !partnerChecked && isLegacyMarked ? (
+                  <span className="list-meta">Có dữ liệu cũ của cặp</span>
+                ) : null}
               </button>
             );
           })}
@@ -161,8 +182,16 @@ export default function BusyRegistrationPanel({
       )}
 
       <div className="note-box">
-        Nếu không đăng ký ngày nào, hệ thống sẽ hiểu là cặp của bạn có thể phục vụ toàn bộ tuần sau.
+        Mỗi người trong cặp được chọn tối đa 1 ngày bận.
+        <br />Hai người chọn 2 ngày khác nhau thì cặp sẽ có đủ 2 ngày bận trong tuần.
+        <br />Mỗi ngày chỉ tối đa 3 cặp được giữ chỗ, ai lưu trước sẽ được trước.
       </div>
+
+      {legacyBusyDates.length > 0 ? (
+        <div className="form-error">
+          Cặp của bạn đang còn dữ liệu ngày bận kiểu cũ từ phiên bản trước. Khi bạn bấm lưu, dữ liệu cũ của cặp trong tuần này sẽ được xóa để chuyển sang cách đăng ký mới.
+        </div>
+      ) : null}
 
       {status.message ? (
         <div className={status.type === "error" ? "form-error" : "form-success"}>{status.message}</div>
@@ -187,4 +216,10 @@ function toInputDate(date: Date) {
   const month = `${date.getMonth() + 1}`.padStart(2, "0");
   const day = `${date.getDate()}`.padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function formatInputDate(value: string) {
+  const [year, month, day] = value.split("-");
+  if (!year || !month || !day) return value;
+  return `${day}/${month}/${year}`;
 }
