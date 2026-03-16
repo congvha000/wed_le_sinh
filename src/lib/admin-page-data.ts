@@ -141,15 +141,16 @@ export async function requireAdminContext() {
   return ctx;
 }
 
-export async function getAdminServicesPageData() {
+export async function getAdminServicesPageData(weekMode: "current" | "next" = "next") {
   const ctx = await requireAdminContext();
-  const nextWeekStart = getNextWeekStart();
+  const targetWeekStart = weekMode === "current" ? getCurrentWeekStart() : getNextWeekStart();
 
-  const [services, pairs] = await Promise.all([getServicesForWeek(nextWeekStart), getPairsForAdmin()]);
+  const [services, pairs] = await Promise.all([getServicesForWeek(targetWeekStart), getPairsForAdmin()]);
 
   return {
     ctx,
-    nextWeekStart,
+    weekMode,
+    targetWeekStart,
     services,
     pairs,
   };

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -46,7 +47,8 @@ type ServiceItem = {
 };
 
 type Props = {
-  nextWeekStart: string;
+  selectedWeek: "current" | "next";
+  targetWeekStart: string;
   services: ServiceItem[];
   pairs: PairItem[];
 };
@@ -120,9 +122,10 @@ function getFormStateFromService(service: ServiceItem) {
   };
 }
 
-export default function AdminServicesPanel({ nextWeekStart, services, pairs }: Props) {
+export default function AdminServicesPanel({ selectedWeek, targetWeekStart, services, pairs }: Props) {
   const router = useRouter();
-  const defaultDate = formatDateInputValue(new Date(nextWeekStart));
+  const weekLabel = selectedWeek === "current" ? "tuần này" : "tuần sau";
+  const defaultDate = formatDateInputValue(new Date(targetWeekStart));
   const [serviceDate, setServiceDate] = useState(defaultDate);
   const [servicePeriod, setServicePeriod] = useState<ServicePeriod>("MORNING");
   const [customTime, setCustomTime] = useState("");
@@ -229,8 +232,8 @@ export default function AdminServicesPanel({ nextWeekStart, services, pairs }: P
 
       setLoading("create-service");
       await postJson("/api/admin/services/create", payload);
-      toast.success("Đã tạo buổi lễ.");
-      setMessage({ type: "success", text: "Đã tạo buổi lễ. Danh sách bên phải sẽ cập nhật ngay." });
+      toast.success(`Đã tạo buổi lễ ${weekLabel}.`);
+      setMessage({ type: "success", text: `Đã tạo buổi lễ ${weekLabel}. Danh sách bên phải sẽ cập nhật ngay.` });
       setCustomTime("");
       setServicePoints(calculateAutoPoint(serviceDate, servicePeriod, ""));
       router.refresh();
@@ -306,9 +309,9 @@ export default function AdminServicesPanel({ nextWeekStart, services, pairs }: P
       setLoading("auto-assign");
       setMessage({ type: "", text: "" });
       const data = await postJson("/api/admin/services/auto-assign", {
-        weekStart: nextWeekStart,
+        weekStart: targetWeekStart,
       });
-      const text = data?.summary?.message ?? "Đã tự xếp lịch.";
+      const text = data?.summary?.message ?? `Đã tự xếp lịch ${weekLabel}.`;
       toast.success(text);
       setMessage({ type: "success", text });
       router.refresh();
@@ -326,7 +329,7 @@ export default function AdminServicesPanel({ nextWeekStart, services, pairs }: P
       <section className="card section-pad stack-md">
         <div className="section-heading">
           <div>
-            <div className="section-kicker">Buổi lễ tuần sau</div>
+            <div className="section-kicker">Buổi lễ linh hoạt theo tuần</div>
             <h2 style={{ margin: "8px 0 0" }}>{isEditing ? "Chỉnh sửa buổi lễ" : "Tạo lịch theo ngày và khung lễ"}</h2>
           </div>
           {isEditing ? <span className="badge badge-warning">Đang chỉnh sửa</span> : null}

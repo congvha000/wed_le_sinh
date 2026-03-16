@@ -4,20 +4,30 @@ import WorkspaceShell from "@/components/workspace-shell";
 import AdminServicesPanel from "@/components/admin-services-panel";
 import { getAdminServicesPageData } from "@/lib/admin-page-data";
 
-export default async function AdminServicesPage() {
-  const data = await getAdminServicesPageData();
+type AdminServicesPageProps = {
+  searchParams?: Promise<{
+    week?: string;
+  }>;
+};
+
+export default async function AdminServicesPage({ searchParams }: AdminServicesPageProps) {
+  const resolvedSearchParams = (await searchParams) ?? {};
+  const selectedWeek = resolvedSearchParams.week === "current" ? "current" : "next";
+  const data = await getAdminServicesPageData(selectedWeek);
+  const weekLabel = selectedWeek === "current" ? "tuần này" : "tuần sau";
 
   return (
     <WorkspaceShell
       role="ADMIN"
       subtitle="Khu vực quản trị"
       badge="Xếp lịch"
-      title="Quản lý buổi lễ"
-      metaLabel="Buổi lễ tuần sau"
+      title={`Quản lý buổi lễ ${weekLabel}`}
+      metaLabel={`Buổi lễ ${weekLabel}`}
       metaValue={`${data.services.length}`}
     >
       <AdminServicesPanel
-        nextWeekStart={data.nextWeekStart.toISOString()}
+        selectedWeek={selectedWeek}
+        targetWeekStart={data.targetWeekStart.toISOString()}
         services={data.services.map((service) => ({
           id: service.id,
           title: service.title,
