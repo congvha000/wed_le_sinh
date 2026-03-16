@@ -26,6 +26,7 @@ export default async function AdminServicesPage({ searchParams }: AdminServicesP
       metaValue={`${data.services.length}`}
     >
       <AdminServicesPanel
+        key={selectedWeek}
         selectedWeek={selectedWeek}
         targetWeekStart={data.targetWeekStart.toISOString()}
         services={data.services.map((service) => ({

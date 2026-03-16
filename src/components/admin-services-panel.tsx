@@ -330,25 +330,28 @@ export default function AdminServicesPanel({ selectedWeek, targetWeekStart, serv
         <div className="section-heading">
           <div>
             <div className="section-kicker">Buổi lễ linh hoạt theo tuần</div>
-            <h2 style={{ margin: "8px 0 0" }}>{isEditing ? "Chỉnh sửa buổi lễ" : `Tạo lịch ${weekLabel}`}</h2>
+            <h2 style={{ margin: "8px 0 0" }}>{isEditing ? "Chỉnh sửa buổi lễ" : "Tạo lịch theo ngày và khung lễ"}</h2>
           </div>
           {isEditing ? <span className="badge badge-warning">Đang chỉnh sửa</span> : null}
         </div>
 
-        <div className="dashboard-grid form-two-col">
-          <Link href="/admin/services?week=current" className={selectedWeek === "current" ? "button-primary" : "button-secondary"}>
+        <div className="button-row">
+          <Link
+            href="/admin/services?week=current"
+            className={selectedWeek === "current" ? "button-primary" : "button-secondary"}
+          >
             Tuần này
           </Link>
-          <Link href="/admin/services?week=next" className={selectedWeek === "next" ? "button-primary" : "button-secondary"}>
+          <Link
+            href="/admin/services?week=next"
+            className={selectedWeek === "next" ? "button-primary" : "button-secondary"}
+          >
             Tuần sau
           </Link>
         </div>
 
-        <div className="list-card">
-          <div>
-            <div className="list-title">Tuần mục tiêu: {weekLabel}</div>
-            <div className="list-subtitle">Bắt đầu từ {new Date(targetWeekStart).toLocaleDateString("vi-VN")}</div>
-          </div>
+        <div className="note-box">
+          Bạn đang thao tác cho <strong>{weekLabel}</strong>. Ngày mặc định sẽ bắt đầu từ <strong>{defaultDate}</strong>.
         </div>
 
         {editingService?.assignments.length ? (
