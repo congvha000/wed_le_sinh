@@ -330,9 +330,25 @@ export default function AdminServicesPanel({ selectedWeek, targetWeekStart, serv
         <div className="section-heading">
           <div>
             <div className="section-kicker">Buổi lễ linh hoạt theo tuần</div>
-            <h2 style={{ margin: "8px 0 0" }}>{isEditing ? "Chỉnh sửa buổi lễ" : "Tạo lịch theo ngày và khung lễ"}</h2>
+            <h2 style={{ margin: "8px 0 0" }}>{isEditing ? "Chỉnh sửa buổi lễ" : `Tạo lịch ${weekLabel}`}</h2>
           </div>
           {isEditing ? <span className="badge badge-warning">Đang chỉnh sửa</span> : null}
+        </div>
+
+        <div className="dashboard-grid form-two-col">
+          <Link href="/admin/services?week=current" className={selectedWeek === "current" ? "button-primary" : "button-secondary"}>
+            Tuần này
+          </Link>
+          <Link href="/admin/services?week=next" className={selectedWeek === "next" ? "button-primary" : "button-secondary"}>
+            Tuần sau
+          </Link>
+        </div>
+
+        <div className="list-card">
+          <div>
+            <div className="list-title">Tuần mục tiêu: {weekLabel}</div>
+            <div className="list-subtitle">Bắt đầu từ {new Date(targetWeekStart).toLocaleDateString("vi-VN")}</div>
+          </div>
         </div>
 
         {editingService?.assignments.length ? (
@@ -486,11 +502,11 @@ export default function AdminServicesPanel({ selectedWeek, targetWeekStart, serv
       <section className="card section-pad stack-md">
         <div>
           <div className="section-kicker">Danh sách buổi lễ</div>
-          <h2 style={{ margin: "8px 0 0" }}>Buổi lễ đã tạo</h2>
+          <h2 style={{ margin: "8px 0 0" }}>Buổi lễ đã tạo {weekLabel}</h2>
         </div>
 
         {services.length === 0 ? (
-          <div className="empty-state">Tuần sau hiện chưa có buổi lễ nào.</div>
+          <div className="empty-state">{selectedWeek === "current" ? "Tuần này" : "Tuần sau"} hiện chưa có buổi lễ nào.</div>
         ) : (
           <div className="stack-sm">
             {groupedServices.map(([day, items]) => (
