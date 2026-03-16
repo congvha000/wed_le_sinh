@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getUserContext } from "@/lib/get-user-context";
-import { addMonths, formatMonthLabel, getMonthKey, getNextWeekEnd, getNextWeekStart, startOfMonth } from "@/lib/date-utils";
+import { addMonths, formatMonthLabel, getCurrentWeekStart, getMonthKey, getNextWeekEnd, getNextWeekStart, startOfMonth } from "@/lib/date-utils";
 
 const pairSelect = {
   id: true,
@@ -97,9 +97,9 @@ async function getUsersForAdmin() {
   });
 }
 
-async function getBusyWindowForNextWeek(nextWeekStart: Date): Promise<any> {
+async function getBusyWindowForWeek(weekStart: Date) {
   return prisma.busyWindow.findUnique({
-    where: { weekStart: nextWeekStart },
+    where: { weekStart },
     include: {
       requests: {
         select: {
@@ -107,12 +107,6 @@ async function getBusyWindowForNextWeek(nextWeekStart: Date): Promise<any> {
           pairId: true,
           busyDate: true,
           queueOrder: true,
-          user: {
-            select: {
-              name: true,
-              email: true,
-            },
-          },
           pair: {
             select: {
               name: true,
@@ -122,7 +116,7 @@ async function getBusyWindowForNextWeek(nextWeekStart: Date): Promise<any> {
         orderBy: [{ busyDate: "asc" }, { queueOrder: "asc" }],
       },
     },
-  } as any);
+  });
 }
 
 export async function requireAdminContext() {
@@ -153,14 +147,15 @@ export async function getAdminServicesPageData() {
   };
 }
 
-export async function getAdminBusyDaysPageData() {
+export async function getAdminBusyDaysPageData(weekMode: "current" | "next" = "next") {
   const ctx = await requireAdminContext();
-  const nextWeekStart = getNextWeekStart();
-  const busyWindow = await getBusyWindowForNextWeek(nextWeekStart);
+  const targetWeekStart = weekMode === "current" ? getCurrentWeekStart() : getNextWeekStart();
+  const busyWindow = await getBusyWindowForWeek(targetWeekStart);
 
   return {
     ctx,
-    nextWeekStart,
+    weekMode,
+    targetWeekStart,
     busyWindow,
     stats: {
       busyRegistrations: busyWindow?.requests.length ?? 0,
@@ -206,7 +201,7 @@ export async function getAdminPageData() {
     getUsersForAdmin(),
     getPairsForAdmin(),
     getServicesForNextWeek(nextWeekStart),
-    getBusyWindowForNextWeek(nextWeekStart),
+    getBusyWindowForWeek(nextWeekStart),
     prisma.assignment.findMany({
       where: {
         service: {
@@ -246,71 +241,76 @@ export async function getAdminPageData() {
 
   for (const assignment of monthlyAssignments) {
     const key = getMonthKey(assignment.service.startsAt);
-    const entry = frameMap.get(key);
-    const points = Number(assignment.service.points);
+    const frame = frameMap.get(key);
+    if (!frame) continue;
+    frame.totalPoints += Number(assignment.service.points);
+    frame.totalServices += 1;
 
-    if (entry) {
-      entry.totalPoints += points;
-      entry.totalServices += 1;
-      const set = activePairsByMonth.get(key) ?? new Set<string>();
-      set.add(assignment.pairId);
-      activePairsByMonth.set(key, set);
-    }
+    const pairSet = activePairsByMonth.get(key) ?? new Set<string>();
+    pairSet.add(assignment.pairId);
+    activePairsByMonth.set(key, pairSet);
 
-    if (assignment.service.startsAt >= monthStart && assignment.service.startsAt < nextMonthStart) {
-      const current = topPairsMap.get(assignment.pairId) ?? {
-        name: assignment.pair.name,
-        points: 0,
-        services: 0,
-      };
-      current.points += points;
-      current.services += 1;
-      topPairsMap.set(assignment.pairId, current);
-    }
+    const pairStats = topPairsMap.get(assignment.pairId) ?? {
+      name: assignment.pair.name,
+      points: 0,
+      services: 0,
+    };
+    pairStats.points += Number(assignment.service.points);
+    pairStats.services += 1;
+    topPairsMap.set(assignment.pairId, pairStats);
   }
 
-  const monthlyStats = frames.map((item) => ({
-    label: item.label,
-    totalPoints: item.totalPoints,
-    totalServices: item.totalServices,
-    activePairs: activePairsByMonth.get(item.key)?.size ?? 0,
+  for (const frame of frames) {
+    frame.activePairs = activePairsByMonth.get(frame.key)?.size ?? 0;
+  }
+
+  const monthlyStats = frames.map((frame) => ({
+    label: frame.label,
+    totalPoints: frame.totalPoints,
+    totalServices: frame.totalServices,
+    activePairs: frame.activePairs,
   }));
 
-  const topPairsThisMonth = Array.from(topPairsMap.values())
-    .sort((a, b) => {
-      if (b.points !== a.points) return b.points - a.points;
-      if (b.services !== a.services) return b.services - a.services;
-      return a.name.localeCompare(b.name, "vi");
-    })
-    .slice(0, 6);
+  const currentMonthLabel = formatMonthLabel(new Date());
+  const currentMonthStats = monthlyStats.find((item) => item.label === currentMonthLabel) ?? {
+    label: currentMonthLabel,
+    totalPoints: 0,
+    totalServices: 0,
+    activePairs: 0,
+  };
 
-  const normalUsers = users.filter((user) => user.role === "USER");
-  const pendingUsers = normalUsers.filter((user) => !user.approved);
-  const unpairedUsers = normalUsers.filter((user) => user.approved && user.pairMembers.length === 0);
-  const assignedServices = services.filter((service) => {
-    const required = service.type === "FOUR_PEOPLE" ? 2 : 1;
-    return service.assignments.length >= required;
-  }).length;
+  const currentMonthTopPair = Array.from(topPairsMap.values()).reduce<{ name: string; points: number; services: number } | null>(
+    (best, pair) => {
+      if (!best) return pair;
+      return pair.points > best.points ? pair : best;
+    },
+    null,
+  );
+
+  const upcomingAssignments = services.flatMap((service) =>
+    service.assignments.map((assignment) => ({
+      id: assignment.id,
+      pairName: assignment.pair.name,
+      role: assignment.role,
+      serviceTitle: service.title,
+      serviceType: service.type,
+      startsAt: service.startsAt,
+    })),
+  );
 
   return {
     ctx,
-    nextWeekStart,
-    services,
-    pairs,
-    busyWindow,
-    monthlyStats,
-    topPairsThisMonth,
-    normalUsers,
-    pendingUsers,
-    unpairedUsers,
     stats: {
-      totalUsers: normalUsers.length,
-      pendingUsers: pendingUsers.length,
-      unpairedUsers: unpairedUsers.length,
-      totalPairs: pairs.length,
-      totalServices: services.length,
-      assignedServices,
+      totalUsers: users.filter((user) => user.role === "USER").length,
+      activePairs: pairs.filter((pair) => pair.active).length,
+      servicesNextWeek: services.length,
       busyRegistrations: busyWindow?.requests.length ?? 0,
+      currentMonthPoints: currentMonthStats.totalPoints,
+      currentMonthServices: currentMonthStats.totalServices,
+      topPairName: currentMonthTopPair?.name ?? "Chưa có cặp",
+      topPairPoints: currentMonthTopPair?.points ?? 0,
     },
+    monthlyStats,
+    upcomingAssignments,
   };
 }

@@ -4,20 +4,30 @@ import WorkspaceShell from "@/components/workspace-shell";
 import AdminBusyDaysPanel from "@/components/admin-busy-days-panel";
 import { getAdminBusyDaysPageData } from "@/lib/admin-page-data";
 
-export default async function AdminBusyDaysPage() {
-  const data = await getAdminBusyDaysPageData();
+type AdminBusyDaysPageProps = {
+  searchParams?: Promise<{
+    week?: string;
+  }>;
+};
+
+export default async function AdminBusyDaysPage({ searchParams }: AdminBusyDaysPageProps) {
+  const resolvedSearchParams = (await searchParams) ?? {};
+  const selectedWeek = resolvedSearchParams.week === "current" ? "current" : "next";
+  const data = await getAdminBusyDaysPageData(selectedWeek);
+  const weekLabel = selectedWeek === "current" ? "tuần này" : "tuần sau";
 
   return (
     <WorkspaceShell
       role="ADMIN"
       subtitle="Khu vực quản trị"
       badge="Ngày bận"
-      title="Đăng ký ngày bận tuần sau"
+      title={`Đăng ký ngày bận ${weekLabel}`}
       metaLabel="Lượt đăng ký"
       metaValue={`${data.stats.busyRegistrations}`}
     >
       <AdminBusyDaysPanel
-        nextWeekStart={data.nextWeekStart.toISOString()}
+        selectedWeek={selectedWeek}
+        targetWeekStart={data.targetWeekStart.toISOString()}
         busyWindow={
           data.busyWindow
             ? {
@@ -28,7 +38,6 @@ export default async function AdminBusyDaysPage() {
                 requests: data.busyWindow.requests.map((request) => ({
                   id: request.id,
                   pairName: request.pair.name,
-                  selectedBy: request.user?.name || request.user?.email || "Dữ liệu cũ",
                   busyDate: request.busyDate.toISOString(),
                   queueOrder: request.queueOrder,
                 })),

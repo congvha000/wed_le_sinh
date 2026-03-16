@@ -1,10 +1,17 @@
-export function getNextWeekStart(base = new Date()) {
+export function getCurrentWeekStart(base = new Date()) {
   const now = new Date(base);
   const currentDay = now.getDay();
-  const diffToMonday = currentDay === 0 ? 1 : 8 - currentDay;
-  const nextMonday = new Date(now);
-  nextMonday.setHours(0, 0, 0, 0);
-  nextMonday.setDate(now.getDate() + diffToMonday);
+  const diffToMonday = currentDay === 0 ? -6 : 1 - currentDay;
+  const currentMonday = new Date(now);
+  currentMonday.setHours(0, 0, 0, 0);
+  currentMonday.setDate(now.getDate() + diffToMonday);
+  return currentMonday;
+}
+
+export function getNextWeekStart(base = new Date()) {
+  const currentWeekStart = getCurrentWeekStart(base);
+  const nextMonday = new Date(currentWeekStart);
+  nextMonday.setDate(currentWeekStart.getDate() + 7);
   return nextMonday;
 }
 

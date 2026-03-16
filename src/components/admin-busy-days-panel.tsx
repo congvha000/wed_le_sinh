@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -12,14 +13,14 @@ type BusyWindowItem = {
   requests: {
     id: string;
     pairName: string;
-    selectedBy: string;
     busyDate: string;
     queueOrder: number;
   }[];
 } | null;
 
 type Props = {
-  nextWeekStart: string;
+  selectedWeek: "current" | "next";
+  targetWeekStart: string;
   busyWindow: BusyWindowItem;
 };
 
@@ -27,13 +28,15 @@ function formatDateTime(value: string) {
   return new Date(value).toLocaleString("vi-VN");
 }
 
-export default function AdminBusyDaysPanel({ nextWeekStart, busyWindow }: Props) {
+export default function AdminBusyDaysPanel({ selectedWeek, targetWeekStart, busyWindow }: Props) {
   const router = useRouter();
   const [loading, setLoading] = useState("");
   const [message, setMessage] = useState<{ type: "" | "error" | "success"; text: string }>({
     type: "",
     text: "",
   });
+
+  const weekLabel = selectedWeek === "current" ? "tuần này" : "tuần sau";
 
   const groupedBusyRequests = useMemo(() => {
     const map = new Map<string, NonNullable<BusyWindowItem>["requests"]>();
@@ -62,9 +65,9 @@ export default function AdminBusyDaysPanel({ nextWeekStart, busyWindow }: Props)
     try {
       setLoading("open-busy-window");
       setMessage({ type: "", text: "" });
-      await postJson("/api/admin/busy-window/open", { weekStart: nextWeekStart });
-      toast.success("Đã mở đăng ký ngày bận tuần sau.");
-      setMessage({ type: "success", text: "Đã mở đăng ký ngày bận tuần sau." });
+      await postJson("/api/admin/busy-window/open", { weekStart: targetWeekStart });
+      toast.success(`Đã mở đăng ký ngày bận ${weekLabel}.`);
+      setMessage({ type: "success", text: `Đã mở đăng ký ngày bận ${weekLabel}.` });
       router.refresh();
     } catch (error) {
       const text = error instanceof Error ? error.message : "Không thể mở đăng ký ngày bận.";
@@ -79,9 +82,9 @@ export default function AdminBusyDaysPanel({ nextWeekStart, busyWindow }: Props)
     try {
       setLoading("close-busy-window");
       setMessage({ type: "", text: "" });
-      await postJson("/api/admin/busy-window/close", { weekStart: nextWeekStart });
-      toast.success("Đã khóa đăng ký ngày bận tuần sau.");
-      setMessage({ type: "success", text: "Đã khóa đăng ký ngày bận tuần sau." });
+      await postJson("/api/admin/busy-window/close", { weekStart: targetWeekStart });
+      toast.success(`Đã khóa đăng ký ngày bận ${weekLabel}.`);
+      setMessage({ type: "success", text: `Đã khóa đăng ký ngày bận ${weekLabel}.` });
       router.refresh();
     } catch (error) {
       const text = error instanceof Error ? error.message : "Không thể khóa đăng ký ngày bận.";
@@ -96,48 +99,54 @@ export default function AdminBusyDaysPanel({ nextWeekStart, busyWindow }: Props)
     <div className="dashboard-grid two-col-layout">
       <section className="card section-pad stack-md">
         <div>
-          <div className="section-kicker">Ngày bận tuần sau</div>
+          <div className="section-kicker">Ngày bận linh hoạt theo tuần</div>
           <h2 style={{ margin: "8px 0 0" }}>Mở và khóa đăng ký</h2>
+        </div>
+
+        <div className="dashboard-grid form-two-col">
+          <Link href="/admin/busy-days?week=current" className={selectedWeek === "current" ? "button-primary" : "button-secondary"}>
+            Tuần này
+          </Link>
+          <Link href="/admin/busy-days?week=next" className={selectedWeek === "next" ? "button-primary" : "button-secondary"}>
+            Tuần sau
+          </Link>
         </div>
 
         <div className="note-box">
           Quy định:
-          <br />- Mỗi người trong cặp được chọn tối đa 1 ngày bận
-          <br />- Mỗi cặp tối đa 2 ngày bận, 2 người chọn 2 ngày khác nhau
+          <br />- Mỗi cặp chỉ được đăng ký tối đa 2 ngày bận
           <br />- Mỗi ngày chỉ tối đa 3 cặp bận
-          <br />- Ai lưu trước được giữ chỗ trước
+          <br />- Ai đăng ký trước được giữ chỗ trước
         </div>
 
         <div className="list-card">
           <div>
-            <div className="list-title">Tuần mục tiêu</div>
-            <div className="list-subtitle">Bắt đầu từ {new Date(nextWeekStart).toLocaleDateString("vi-VN")}</div>
+            <div className="list-title">Tuần mục tiêu: {weekLabel}</div>
+            <div className="list-subtitle">Bắt đầu từ {new Date(targetWeekStart).toLocaleDateString("vi-VN")}</div>
           </div>
         </div>
 
         <div className="dashboard-grid form-two-col">
           <button className="button-primary" type="button" onClick={handleOpenBusyWindow} disabled={loading === "open-busy-window"}>
-            {loading === "open-busy-window" ? "Đang mở..." : "Mở đăng ký"}
+            {loading === "open-busy-window" ? "Đang mở..." : `Mở đăng ký ${weekLabel}`}
           </button>
 
           <button className="button-secondary" type="button" onClick={handleCloseBusyWindow} disabled={loading === "close-busy-window"}>
-            {loading === "close-busy-window" ? "Đang khóa..." : "Khóa đăng ký"}
+            {loading === "close-busy-window" ? "Đang khóa..." : `Khóa đăng ký ${weekLabel}`}
           </button>
         </div>
 
-        {message.text ? (
-          <div className={message.type === "error" ? "form-error" : "form-success"}>{message.text}</div>
-        ) : null}
+        {message.text ? <div className={message.type === "error" ? "form-error" : "form-success"}>{message.text}</div> : null}
       </section>
 
       <section className="card section-pad stack-md">
         <div>
           <div className="section-kicker">Danh sách đã đăng ký</div>
-          <h2 style={{ margin: "8px 0 0" }}>Các cặp đã báo ngày bận</h2>
+          <h2 style={{ margin: "8px 0 0" }}>Các cặp đã báo ngày bận {weekLabel}</h2>
         </div>
 
         {!busyWindow ? (
-          <div className="empty-state">Tuần sau chưa mở đăng ký ngày bận.</div>
+          <div className="empty-state">{selectedWeek === "current" ? "Tuần này" : "Tuần sau"} chưa mở đăng ký ngày bận.</div>
         ) : busyWindow.requests.length === 0 ? (
           <div className="empty-state">Hiện chưa có cặp nào đăng ký ngày bận.</div>
         ) : (
@@ -164,8 +173,7 @@ export default function AdminBusyDaysPanel({ nextWeekStart, busyWindow }: Props)
                   <div key={item.id} className="list-card">
                     <div>
                       <div className="list-title">{item.pairName}</div>
-                      <div className="list-subtitle">Người chọn: {item.selectedBy}</div>
-                      <div className="list-meta">Thứ tự đăng ký: {item.queueOrder}</div>
+                      <div className="list-subtitle">Thứ tự đăng ký: {item.queueOrder}</div>
                     </div>
                   </div>
                 ))}
