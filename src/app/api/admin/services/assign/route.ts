@@ -9,6 +9,10 @@ function canServeFourPeople(levels: string[]) {
   return joined === "LEVEL_2|LEVEL_3" || joined === "LEVEL_3|LEVEL_3";
 }
 
+function isEligibleForAdoration(level: string) {
+  return level === "LEVEL_3";
+}
+
 export async function POST(req: Request) {
   const authResult = await requireDbUser("ADMIN");
   if (authResult.error) return authResult.error;
@@ -36,6 +40,23 @@ export async function POST(req: Request) {
 
     if (pairAssignments.some((assignment) => overlaps(assignment.service.startsAt, assignment.service.endsAt, service.startsAt, service.endsAt))) {
       return Response.json({ error: "Cặp đã có lịch trùng giờ với buổi này" }, { status: 400 });
+    }
+
+    if (service.type === "ADORATION") {
+      if (!isEligibleForAdoration(String(pair.level))) {
+        return Response.json({ error: "Chầu Thánh Thể chỉ nhận cặp LV3" }, { status: 400 });
+      }
+
+      if (service.assignments.length > 0) {
+        return Response.json({ error: "Buổi chầu Thánh Thể này đã có cặp phục vụ" }, { status: 400 });
+      }
+
+      await prisma.$transaction(async (tx) => {
+        await tx.assignment.create({ data: { serviceId: service.id, pairId: pair.id, role: AssignmentRole.GENERAL } });
+        await syncPairTotals(tx, [pair.id]);
+      });
+
+      return Response.json({ ok: true });
     }
 
     if (service.type === "FOUR_PEOPLE") {

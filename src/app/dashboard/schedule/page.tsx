@@ -23,9 +23,9 @@ function getServiceTypeLabel(type: string) {
   }
 }
 
-function normalizeServiceTitle(title: string, startsAt: string) {
+function normalizeServiceTitle(title: string, startsAt: string, type: string) {
   const start = new Date(startsAt);
-  const period = getServicePeriodFromDate(start);
+  const period = getServicePeriodFromDate(start, type);
   const periodLabel = getServicePeriodLabel(period);
   const defaultSlotTitle = `${periodLabel} - ${SERVICE_TIME_SLOTS[period].defaultTime}`;
   const trimmedTitle = title.trim();
@@ -63,7 +63,7 @@ export default async function DashboardSchedulePage() {
             {data.pair.assignments.map((item) => (
               <div key={item.id} className="list-card list-card-column-mobile" style={{ alignItems: "flex-start" }}>
                 <div style={{ flex: 1 }}>
-                  <div className="list-title">{normalizeServiceTitle(item.service.title, item.service.startsAt.toISOString())}</div>
+                  <div className="list-title">{normalizeServiceTitle(item.service.title, item.service.startsAt.toISOString(), item.service.type)}</div>
                   <div className="list-subtitle">Ngày {formatDateLabel(item.service.startsAt.toISOString())}</div>
                   <div className="list-meta">
                     Điểm buổi lễ: {Number(item.service.points)} · Kiểu lễ: {getServiceTypeLabel(item.service.type)}

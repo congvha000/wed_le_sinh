@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
@@ -40,11 +40,18 @@ export default function AdminPairsPanel({ pairs, unpairedUsers }: Props) {
   const [pairId, setPairId] = useState("");
   const [userA, setUserA] = useState("");
   const [userB, setUserB] = useState("");
+  const [editingPairId, setEditingPairId] = useState("");
+  const [editPairName, setEditPairName] = useState("");
+  const [editPairLevel, setEditPairLevel] = useState("LEVEL_1");
+  const [pointDelta, setPointDelta] = useState("");
+  const [pointReason, setPointReason] = useState("");
   const [loading, setLoading] = useState("");
   const [message, setMessage] = useState<{ type: "" | "error" | "success"; text: string }>({
     type: "",
     text: "",
   });
+
+  const pairsWithoutMembers = useMemo(() => pairs.filter((pair) => pair.members.length === 0), [pairs]);
 
   async function postJson(url: string, body: unknown) {
     const res = await fetch(url, {
@@ -98,6 +105,7 @@ export default function AdminPairsPanel({ pairs, unpairedUsers }: Props) {
       toast.success("Đã gán 2 thành viên vào cặp.");
       setUserA("");
       setUserB("");
+      setPairId("");
       setMessage({ type: "success", text: "Đã gán 2 thành viên vào cặp." });
       router.refresh();
     } catch (error) {
@@ -128,12 +136,73 @@ export default function AdminPairsPanel({ pairs, unpairedUsers }: Props) {
     }
   }
 
+  function beginEditPair(pair: PairItem) {
+    setEditingPairId(pair.id);
+    setEditPairName(pair.name);
+    setEditPairLevel(pair.level);
+    setPointDelta("");
+    setPointReason("");
+    setMessage({ type: "", text: "" });
+  }
+
+  function cancelEditPair() {
+    setEditingPairId("");
+    setEditPairName("");
+    setEditPairLevel("LEVEL_1");
+    setPointDelta("");
+    setPointReason("");
+  }
+
+  async function handleUpdatePair() {
+    try {
+      if (!editingPairId) {
+        throw new Error("Chưa chọn cặp cần chỉnh sửa.");
+      }
+
+      const payload: Record<string, unknown> = {
+        pairId: editingPairId,
+        name: editPairName.trim(),
+        level: editPairLevel,
+      };
+
+      if (pointDelta.trim()) {
+        const parsedDelta = Number(pointDelta);
+        if (!Number.isFinite(parsedDelta) || parsedDelta === 0) {
+          throw new Error("Điểm điều chỉnh phải là số khác 0.");
+        }
+        payload.pointDelta = parsedDelta;
+        if (pointReason.trim()) {
+          payload.reason = pointReason.trim();
+        }
+      }
+
+      setLoading(`update-${editingPairId}`);
+      setMessage({ type: "", text: "" });
+      await postJson("/api/admin/pairs/update", payload);
+      toast.success("Đã cập nhật cặp.");
+      setMessage({ type: "success", text: "Đã cập nhật tên cặp / cấp cặp / điểm thủ công." });
+      cancelEditPair();
+      router.refresh();
+    } catch (error) {
+      const text = error instanceof Error ? error.message : "Không thể cập nhật cặp.";
+      toast.error(text);
+      setMessage({ type: "error", text });
+    } finally {
+      setLoading("");
+    }
+  }
+
   return (
     <div className="dashboard-grid two-col-layout">
       <section className="card section-pad stack-md">
         <div>
           <div className="section-kicker">Cặp lễ sinh</div>
           <h2 style={{ margin: "8px 0 0" }}>Tạo cặp và ghép thành viên</h2>
+        </div>
+
+        <div className="note-box">
+          Admin có thể đổi tên cặp, đổi cấp cặp và cộng/trừ điểm thủ công cho từng cặp ngay ở danh sách bên phải.
+          <br />Điểm lịch phục vụ chỉ tự cộng sau khi ngày/buổi đó đã trôi qua.
         </div>
 
         <input
@@ -161,8 +230,8 @@ export default function AdminPairsPanel({ pairs, unpairedUsers }: Props) {
         </div>
 
         <select className="input" value={pairId} onChange={(event) => setPairId(event.target.value)}>
-          <option value="">Chọn cặp</option>
-          {pairs.map((pair) => (
+          <option value="">Chọn cặp đang trống</option>
+          {pairsWithoutMembers.map((pair) => (
             <option key={pair.id} value={pair.id}>
               {pair.name} - {getPairLevelLabel(pair.level)}
             </option>
@@ -213,8 +282,11 @@ export default function AdminPairsPanel({ pairs, unpairedUsers }: Props) {
           <div className="stack-sm">
             {pairs.map((pair) => {
               const loadingKey = `unassign-${pair.id}`;
+              const updateLoadingKey = `update-${pair.id}`;
+              const isEditing = editingPairId === pair.id;
+
               return (
-                <div key={pair.id} className="list-card" style={{ alignItems: "flex-start" }}>
+                <div key={pair.id} className="list-card list-card-column-mobile" style={{ alignItems: "stretch" }}>
                   <div style={{ flex: 1 }}>
                     <div className="list-title">
                       {pair.name} - {getPairLevelLabel(pair.level)}
@@ -229,18 +301,87 @@ export default function AdminPairsPanel({ pairs, unpairedUsers }: Props) {
                             .map((member) => `${member.name || member.email}${member.isLeader ? " (Trưởng)" : ""}`)
                             .join(" · ")}
                     </div>
+
+                    {isEditing ? (
+                      <div className="stack-sm" style={{ marginTop: 12 }}>
+                        <div className="dashboard-grid form-two-col">
+                          <div>
+                            <label className="field-label">Đổi tên cặp</label>
+                            <input
+                              className="input"
+                              value={editPairName}
+                              onChange={(event) => setEditPairName(event.target.value)}
+                              placeholder="Tên cặp mới"
+                            />
+                          </div>
+                          <div>
+                            <label className="field-label">Cấp cặp</label>
+                            <select className="input" value={editPairLevel} onChange={(event) => setEditPairLevel(event.target.value)}>
+                              <option value="LEVEL_1">LV1</option>
+                              <option value="LEVEL_2">LV2</option>
+                              <option value="LEVEL_3">LV3</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="dashboard-grid form-two-col">
+                          <div>
+                            <label className="field-label">Cộng / trừ điểm</label>
+                            <input
+                              className="input"
+                              type="number"
+                              step="0.1"
+                              value={pointDelta}
+                              onChange={(event) => setPointDelta(event.target.value)}
+                              placeholder="Ví dụ: -1 hoặc 0.5"
+                            />
+                          </div>
+                          <div>
+                            <label className="field-label">Lý do điều chỉnh</label>
+                            <input
+                              className="input"
+                              value={pointReason}
+                              onChange={(event) => setPointReason(event.target.value)}
+                              placeholder="Ví dụ: Bỏ giúp lễ, hỗ trợ thêm..."
+                            />
+                          </div>
+                        </div>
+
+                        <div className="button-row">
+                          <button
+                            className="button-primary"
+                            type="button"
+                            onClick={handleUpdatePair}
+                            disabled={loading === updateLoadingKey}
+                          >
+                            {loading === updateLoadingKey ? "Đang lưu..." : "Lưu chỉnh sửa"}
+                          </button>
+                          <button className="button-secondary" type="button" onClick={cancelEditPair} disabled={loading === updateLoadingKey}>
+                            Hủy
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
 
-                  {pair.members.length > 0 ? (
-                    <button
-                      className="button-secondary"
-                      type="button"
-                      onClick={() => handleUnassignMembers(pair.id)}
-                      disabled={loading === loadingKey}
-                    >
-                      {loading === loadingKey ? "Đang tách..." : "Tách cặp"}
-                    </button>
-                  ) : null}
+                  <div className="button-row" style={{ justifyContent: "flex-end" }}>
+                    {!isEditing ? (
+                      <button className="button-secondary" type="button" onClick={() => beginEditPair(pair)} disabled={Boolean(loading)}>
+                        Chỉnh sửa
+                      </button>
+                    ) : null}
+
+                    {pair.members.length > 0 ? (
+                      <button
+                        className="button-secondary"
+                        type="button"
+                        onClick={() => handleUnassignMembers(pair.id)}
+                        disabled={loading === loadingKey || Boolean(isEditing)}
+                      >
+                        {loading === loadingKey ? "Đang tách..." : "Tách cặp"}
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
               );
             })}

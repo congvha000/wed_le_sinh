@@ -1,6 +1,6 @@
 import { combineUtcDateAndTime, formatDateInputValue, formatTimeValue } from "@/lib/date-utils";
 
-export type ServicePeriod = "MORNING" | "AFTERNOON" | "EXTRA";
+export type ServicePeriod = "MORNING" | "AFTERNOON" | "EXTRA" | "ADORATION";
 
 export const SERVICE_TIME_SLOTS: Record<
   ServicePeriod,
@@ -29,12 +29,19 @@ export const SERVICE_TIME_SLOTS: Record<
     durationMinutes: 60,
     description: "Khung giờ mặc định cho lễ ngoài giờ.",
   },
+  ADORATION: {
+    label: "Chầu Thánh Thể",
+    defaultTime: "19:00",
+    durationMinutes: 60,
+    description: "Khung giờ mặc định cho chầu Thánh Thể.",
+  },
 };
 
 export const SERVICE_PERIOD_OPTIONS: Array<{ value: ServicePeriod; label: string }> = [
   { value: "MORNING", label: "Lễ sáng" },
   { value: "AFTERNOON", label: "Lễ chiều" },
   { value: "EXTRA", label: "Lễ ngoài giờ" },
+  { value: "ADORATION", label: "Chầu Thánh Thể" },
 ];
 
 export function combineDateAndTime(dateValue: string, timeValue: string) {
@@ -60,7 +67,11 @@ export function resolveServiceDateTime(input: {
   };
 }
 
-export function getServicePeriodFromDate(date: Date): ServicePeriod {
+export function getServicePeriodFromDate(date: Date, serviceType?: string): ServicePeriod {
+  if (serviceType === "ADORATION") {
+    return "ADORATION";
+  }
+
   const hour = date.getUTCHours();
   if (hour < 12) return "MORNING";
   if (hour < 18) return "AFTERNOON";

@@ -130,9 +130,45 @@ function isServiceFullyAssigned(service: ServiceItem) {
   return service.assignments.length >= getServiceRequiredPairCount(service);
 }
 
+function isPairEligibleForService(service: ServiceItem | null, pair: PairItem) {
+  if (!pair.active || pair.members.length < 2) {
+    return false;
+  }
+
+  if (!service) {
+    return true;
+  }
+
+  if (service.type === "ADORATION") {
+    return pair.level === "LEVEL_3";
+  }
+
+  if (service.type === "FOUR_PEOPLE") {
+    return pair.level === "LEVEL_2" || pair.level === "LEVEL_3";
+  }
+
+  return true;
+}
+
+function getServiceAssignmentRule(service: ServiceItem | null) {
+  if (!service) {
+    return "Chọn buổi lễ để hệ thống lọc đúng các cặp đủ điều kiện.";
+  }
+
+  if (service.type === "ADORATION") {
+    return "Chầu Thánh Thể chỉ nhận cặp LV3.";
+  }
+
+  if (service.type === "FOUR_PEOPLE") {
+    return "Lễ 4 người nhận 2 cặp và chỉ cho phép tổ hợp LV2 + LV3 hoặc LV3 + LV3.";
+  }
+
+  return "Buổi lễ này nhận 1 cặp đủ 2 thành viên.";
+}
+
 function buildServiceDisplay(service: ServiceItem): ServiceDisplay {
   const start = new Date(service.startsAt);
-  const period = getServicePeriodFromDate(start);
+  const period = getServicePeriodFromDate(start, service.type);
   const timeLabel = formatTime(start);
   const hasCustomTime = timeLabel !== SERVICE_TIME_SLOTS[period].defaultTime;
   const dateKey = formatDateInputValue(start);
@@ -160,7 +196,7 @@ function buildServiceDisplay(service: ServiceItem): ServiceDisplay {
 
 function getFormStateFromService(service: ServiceItem) {
   const start = new Date(service.startsAt);
-  const servicePeriod = getServicePeriodFromDate(start);
+  const servicePeriod = getServicePeriodFromDate(start, service.type);
   const resolvedTime = formatTime(start);
   const customTime = resolvedTime === SERVICE_TIME_SLOTS[servicePeriod].defaultTime ? "" : resolvedTime;
 
@@ -168,7 +204,7 @@ function getFormStateFromService(service: ServiceItem) {
     serviceDate: formatDateInputValue(start),
     servicePeriod,
     customTime,
-    serviceType: service.type,
+    serviceType: service.type === "ADORATION" ? "REGULAR" : service.type,
     servicePoints: String(service.points),
   };
 }
@@ -220,9 +256,20 @@ export default function AdminServicesPanel({ selectedWeek, targetWeekStart, serv
     [editingServiceId, services],
   );
 
+  const selectedAssignableService = useMemo(
+    () => assignableServices.find((service) => service.id === assignServiceId) ?? null,
+    [assignServiceId, assignableServices],
+  );
+
+  const eligiblePairsForSelectedService = useMemo(
+    () => pairs.filter((pair) => isPairEligibleForService(selectedAssignableService, pair)),
+    [pairs, selectedAssignableService],
+  );
+
   const resolvedPreviewTime = customTime.trim() || SERVICE_TIME_SLOTS[servicePeriod].defaultTime;
   const autoTitle = buildServiceTitle(serviceDate, servicePeriod, customTime);
   const isEditing = Boolean(editingServiceId);
+  const isAdorationPeriod = servicePeriod === "ADORATION";
 
   function resetServiceForm() {
     setEditingServiceId("");
@@ -305,10 +352,12 @@ export default function AdminServicesPanel({ selectedWeek, targetWeekStart, serv
   }
 
   async function handleDeleteService(service: ServiceItem) {
+    const display = serviceDisplayMap.get(service.id) ?? buildServiceDisplay(service);
     const hasAssignments = service.assignments.length > 0;
+    const serviceLabel = display.title || service.title;
     const confirmMessage = hasAssignments
-      ? `Buổi lễ "${service.title}" đang có ${service.assignments.length} lượt gán. Xóa buổi này sẽ gỡ luôn các cặp đã gán và cập nhật lại điểm. Bạn vẫn muốn xóa?`
-      : `Bạn có chắc muốn xóa buổi lễ "${service.title}" không?`;
+      ? `Buổi lễ "${serviceLabel}" đang có ${service.assignments.length} lượt gán. Xóa buổi này sẽ gỡ luôn các cặp đã gán và cập nhật lại điểm. Bạn vẫn muốn xóa?`
+      : `Bạn có chắc muốn xóa buổi lễ "${serviceLabel}" không?`;
 
     if (!window.confirm(confirmMessage)) {
       return;
@@ -323,6 +372,7 @@ export default function AdminServicesPanel({ selectedWeek, targetWeekStart, serv
       }
       if (assignServiceId === service.id) {
         setAssignServiceId("");
+        setAssignPairId("");
       }
       toast.success("Đã xóa buổi lễ.");
       setMessage({ type: "success", text: "Đã xóa buổi lễ và đồng bộ lại điểm liên quan." });
@@ -413,6 +463,11 @@ export default function AdminServicesPanel({ selectedWeek, targetWeekStart, serv
           <br />Ngày mặc định sẽ bắt đầu từ <strong>{formatWeekdayDateLabel(defaultDate)}</strong>.
         </div>
 
+        <div className="note-box">
+          Khung lễ hiện có: <strong>Lễ sáng</strong>, <strong>Lễ chiều</strong>, <strong>Lễ ngoài giờ</strong> và <strong>Chầu Thánh Thể</strong>.
+          <br />Điểm chỉ được cộng vào tổng của cặp sau khi buổi được xếp lịch đã trôi qua, không cộng ngay khi vừa phân công.
+        </div>
+
         {editingService?.assignments.length ? (
           <div className="note-box">
             Buổi lễ này đang có <strong>{editingService.assignments.length}</strong> lượt gán.
@@ -472,12 +527,21 @@ export default function AdminServicesPanel({ selectedWeek, targetWeekStart, serv
 
           <div>
             <label className="field-label">Loại buổi lễ</label>
-            <select className="input" value={serviceType} onChange={(event) => setServiceType(event.target.value)}>
+            <select
+              className="input"
+              value={serviceType}
+              onChange={(event) => setServiceType(event.target.value)}
+              disabled={isAdorationPeriod}
+            >
               <option value="REGULAR">Lễ thường</option>
               <option value="SOLEMN">Lễ trọng</option>
-              <option value="ADORATION">Chầu Thánh Thể</option>
               <option value="FOUR_PEOPLE">Lễ 4 người</option>
             </select>
+            {isAdorationPeriod ? (
+              <div className="list-meta" style={{ marginTop: 6 }}>
+                Khi chọn khung <strong>Chầu Thánh Thể</strong>, hệ thống tự hiểu đây là buổi chầu và chỉ cho phép cặp <strong>LV3</strong> phục vụ.
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -532,7 +596,14 @@ export default function AdminServicesPanel({ selectedWeek, targetWeekStart, serv
           <h3 style={{ margin: "8px 0 12px" }}>Gán cặp vào buổi lễ</h3>
         </div>
 
-        <select className="input" value={assignServiceId} onChange={(event) => setAssignServiceId(event.target.value)}>
+        <select
+          className="input"
+          value={assignServiceId}
+          onChange={(event) => {
+            setAssignServiceId(event.target.value);
+            setAssignPairId("");
+          }}
+        >
           <option value="">Chọn buổi lễ còn thiếu cặp</option>
           {assignableServices.map((service) => {
             const display = serviceDisplayMap.get(service.id) ?? buildServiceDisplay(service);
@@ -544,15 +615,22 @@ export default function AdminServicesPanel({ selectedWeek, targetWeekStart, serv
           })}
         </select>
 
+        <div className="note-box">
+          {getServiceAssignmentRule(selectedAssignableService)}
+          {selectedAssignableService ? (
+            <>
+              <br />Hiện có <strong>{eligiblePairsForSelectedService.length}</strong> cặp hợp lệ cho buổi đã chọn.
+            </>
+          ) : null}
+        </div>
+
         <select className="input" value={assignPairId} onChange={(event) => setAssignPairId(event.target.value)}>
           <option value="">Chọn cặp</option>
-          {pairs
-            .filter((pair) => pair.active && pair.members.length >= 2)
-            .map((pair) => (
-              <option key={pair.id} value={pair.id}>
-                {pair.name} - {getPairLevelLabel(pair.level)} - {pair.totalPoints} điểm
-              </option>
-            ))}
+          {eligiblePairsForSelectedService.map((pair) => (
+            <option key={pair.id} value={pair.id}>
+              {pair.name} - {getPairLevelLabel(pair.level)} - {pair.totalPoints} điểm
+            </option>
+          ))}
         </select>
 
         <button className="button-primary" type="button" onClick={handleAssignService} disabled={loading === "assign-service"}>
@@ -602,6 +680,11 @@ export default function AdminServicesPanel({ selectedWeek, targetWeekStart, serv
                                 .map((assignment) => `${assignment.pairName} (${getRoleLabel(assignment.role)})`)
                                 .join(" · ")}`}
                         </div>
+                        {service.type === "ADORATION" ? (
+                          <div className="list-meta" style={{ marginTop: 6 }}>
+                            Quy định: chỉ cặp <strong>LV3</strong> mới được phục vụ buổi chầu Thánh Thể.
+                          </div>
+                        ) : null}
                       </div>
 
                       <div className="button-row" style={{ minWidth: 240, justifyContent: "flex-end" }}>

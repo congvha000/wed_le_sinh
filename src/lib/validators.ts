@@ -46,9 +46,10 @@ export const createPairSchema = z.object({
 
 export const updatePairSchema = z.object({
   pairId: z.string().cuid(),
+  name: z.string().trim().min(2, "Tên cặp quá ngắn").max(100).optional(),
   level: z.enum(["LEVEL_1", "LEVEL_2", "LEVEL_3"]).optional(),
-  pointDelta: z.number().optional(),
-  reason: z.string().max(200).optional(),
+  pointDelta: z.number().finite().optional(),
+  reason: z.string().trim().max(200).optional(),
 });
 
 export const createServiceSchema = z.object({

@@ -13,12 +13,20 @@ export async function syncPairTotals(client: PairPointSyncClient, pairIds?: stri
     return;
   }
 
+  const now = new Date();
   const pairs = await client.pair.findMany({
     where: normalizedPairIds ? { id: { in: normalizedPairIds } } : undefined,
     select: {
       id: true,
       totalPoints: true,
       assignments: {
+        where: {
+          service: {
+            endsAt: {
+              lte: now,
+            },
+          },
+        },
         select: {
           service: {
             select: {
@@ -36,9 +44,9 @@ export async function syncPairTotals(client: PairPointSyncClient, pairIds?: stri
   });
 
   for (const pair of pairs) {
-    const assignmentPoints = pair.assignments.reduce((sum, assignment) => sum + Number(assignment.service.points), 0);
+    const earnedServicePoints = pair.assignments.reduce((sum, assignment) => sum + Number(assignment.service.points), 0);
     const manualAdjustments = pair.pointTxs.reduce((sum, pointTx) => sum + Number(pointTx.delta), 0);
-    const nextTotal = Number((assignmentPoints + manualAdjustments).toFixed(2));
+    const nextTotal = Number((earnedServicePoints + manualAdjustments).toFixed(2));
 
     if (Number(pair.totalPoints) === nextTotal) {
       continue;

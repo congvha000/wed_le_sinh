@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getUserContext } from "@/lib/get-user-context";
+import { syncPairTotals } from "@/lib/pair-point-sync";
 import {
   addMonths,
   formatMonthLabel,
@@ -92,6 +93,8 @@ async function getServicesForWeek(weekStart: Date) {
 }
 
 async function getPairsForAdmin() {
+  await syncPairTotals(prisma);
+
   return prisma.pair.findMany({
     orderBy: [{ active: "desc" }, { createdAt: "asc" }],
     select: pairSelect,
@@ -205,8 +208,9 @@ export async function getAdminPageData() {
   const monthStart = startOfMonth(new Date());
   const rollingStart = addMonths(monthStart, -11);
   const rollingEnd = addMonths(monthStart, 1);
+  const now = new Date();
 
-  const [users, pairs, services, busyWindow, monthlyAssignments] = await Promise.all([
+  const [users, pairs, services, busyWindow, monthlyAssignments, monthlyPointTxs] = await Promise.all([
     getUsersForAdmin(),
     getPairsForAdmin(),
     getServicesForWeek(nextWeekStart),
@@ -218,14 +222,38 @@ export async function getAdminPageData() {
             gte: rollingStart,
             lt: rollingEnd,
           },
+          endsAt: {
+            lte: now,
+          },
         },
       },
       include: {
-        pair: true,
+        pair: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
         service: {
           select: {
             startsAt: true,
             points: true,
+          },
+        },
+      },
+    }),
+    prisma.pointTransaction.findMany({
+      where: {
+        createdAt: {
+          gte: rollingStart,
+          lt: rollingEnd,
+        },
+      },
+      include: {
+        pair: {
+          select: {
+            id: true,
+            name: true,
           },
         },
       },
@@ -273,9 +301,29 @@ export async function getAdminPageData() {
     }
   }
 
+  for (const pointTx of monthlyPointTxs) {
+    const key = getMonthKey(pointTx.createdAt);
+    const entry = frameMap.get(key);
+    const delta = Number(pointTx.delta);
+
+    if (entry) {
+      entry.totalPoints += delta;
+    }
+
+    if (pointTx.createdAt >= monthStart && pointTx.createdAt < nextMonthStart) {
+      const current = topPairsMap.get(pointTx.pairId) ?? {
+        name: pointTx.pair.name,
+        points: 0,
+        services: 0,
+      };
+      current.points += delta;
+      topPairsMap.set(pointTx.pairId, current);
+    }
+  }
+
   const monthlyStats = frames.map((item) => ({
     label: item.label,
-    totalPoints: item.totalPoints,
+    totalPoints: Number(item.totalPoints.toFixed(2)),
     totalServices: item.totalServices,
     activePairs: activePairsByMonth.get(item.key)?.size ?? 0,
   }));
@@ -286,7 +334,11 @@ export async function getAdminPageData() {
       if (b.services !== a.services) return b.services - a.services;
       return a.name.localeCompare(b.name, "vi");
     })
-    .slice(0, 6);
+    .slice(0, 6)
+    .map((pair) => ({
+      ...pair,
+      points: Number(pair.points.toFixed(2)),
+    }));
 
   const normalUsers = users.filter((user) => user.role === "USER");
   const pendingUsers = normalUsers.filter((user) => !user.approved);

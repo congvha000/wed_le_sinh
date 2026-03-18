@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getUserContext } from "@/lib/get-user-context";
+import { syncPairTotals } from "@/lib/pair-point-sync";
 import { addMonths, formatDateInputValue, formatMonthLabel, getMonthKey, getNextWeekStart, startOfMonth } from "@/lib/date-utils";
 
 export async function requireUserContext() {
@@ -27,9 +28,12 @@ function toDateKey(date: Date) {
 
 export async function getUserPageData() {
   const ctx = await requireUserContext();
+  await syncPairTotals(prisma);
+
   const nextWeekStart = getNextWeekStart();
   const rollingStart = addMonths(startOfMonth(new Date()), -11);
   const rollingEnd = addMonths(startOfMonth(new Date()), 1);
+  const now = new Date();
 
   const [pairMember, busyWindow] = (await Promise.all([
     prisma.pairMember.findFirst({
@@ -46,7 +50,7 @@ export async function getUserPageData() {
               where: {
                 service: {
                   startsAt: {
-                    gte: new Date(),
+                    gte: now,
                   },
                 },
               },
@@ -76,6 +80,23 @@ export async function getUserPageData() {
               },
               orderBy: [{ busyDate: "asc" }, { queueOrder: "asc" }],
             },
+            pointTxs: {
+              where: {
+                createdAt: {
+                  gte: rollingStart,
+                  lt: rollingEnd,
+                },
+              },
+              select: {
+                id: true,
+                delta: true,
+                reason: true,
+                createdAt: true,
+              },
+              orderBy: {
+                createdAt: "asc",
+              },
+            },
           },
         },
       },
@@ -95,6 +116,9 @@ export async function getUserPageData() {
             startsAt: {
               gte: rollingStart,
               lt: rollingEnd,
+            },
+            endsAt: {
+              lte: now,
             },
           },
         },
@@ -128,9 +152,16 @@ export async function getUserPageData() {
     item.services += 1;
   }
 
+  for (const pointTx of pair?.pointTxs ?? []) {
+    const key = getMonthKey(pointTx.createdAt);
+    const item = frameMap.get(key);
+    if (!item) continue;
+    item.points += Number(pointTx.delta);
+  }
+
   const monthlyStats = frames.map((item) => ({
     label: item.label,
-    points: item.points,
+    points: Number(item.points.toFixed(2)),
     services: item.services,
   }));
 

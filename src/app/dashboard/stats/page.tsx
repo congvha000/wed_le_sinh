@@ -20,7 +20,7 @@ export default async function DashboardStatsPage() {
         <div className="metric-card accent-blue">
           <div className="metric-label">Điểm tháng này</div>
           <div className="metric-value">{data.currentMonthPoints}</div>
-          <div className="metric-note">Tổng điểm từ các buổi thuộc tháng hiện tại.</div>
+          <div className="metric-note">Tổng điểm từ các buổi đã qua và các điều chỉnh thủ công trong tháng hiện tại.</div>
         </div>
         <div className="metric-card accent-green">
           <div className="metric-label">Tháng cao nhất</div>
@@ -30,7 +30,7 @@ export default async function DashboardStatsPage() {
         <div className="metric-card accent-purple">
           <div className="metric-label">Tổng lượt phục vụ</div>
           <div className="metric-value">{data.monthlyAssignments.length}</div>
-          <div className="metric-note">Trong 12 tháng gần nhất.</div>
+          <div className="metric-note">Chỉ tính các buổi đã phục vụ trong 12 tháng gần nhất.</div>
         </div>
       </section>
 

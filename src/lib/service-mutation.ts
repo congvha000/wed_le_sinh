@@ -2,7 +2,7 @@ import type { ServiceType } from "@prisma/client";
 import { buildServiceTitle, resolveServiceDateTime, type ServicePeriod } from "@/config/service-time-slots";
 
 const allowedTypes = new Set<ServiceType>(["REGULAR", "SOLEMN", "FOUR_PEOPLE", "ADORATION"]);
-const allowedPeriods = new Set<ServicePeriod>(["MORNING", "AFTERNOON", "EXTRA"]);
+const allowedPeriods = new Set<ServicePeriod>(["MORNING", "AFTERNOON", "EXTRA", "ADORATION"]);
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 const timePattern = /^\d{2}:\d{2}$/;
 
@@ -25,7 +25,7 @@ export function parseServiceMutationPayload(raw: unknown): { ok: true; data: Par
 
   const serviceDate = String(payload.serviceDate ?? "").trim();
   const servicePeriod = String(payload.servicePeriod ?? "MORNING").trim() as ServicePeriod;
-  const type = String(payload.type ?? "REGULAR").trim() as ServiceType;
+  const requestedType = String(payload.type ?? "REGULAR").trim() as ServiceType;
   const points = Number(payload.points ?? 1);
   const customTime = typeof payload.customTime === "string" ? payload.customTime.trim() : "";
 
@@ -41,7 +41,7 @@ export function parseServiceMutationPayload(raw: unknown): { ok: true; data: Par
     return { ok: false, error: "Khung lễ không hợp lệ" };
   }
 
-  if (!allowedTypes.has(type)) {
+  if (!allowedTypes.has(requestedType)) {
     return { ok: false, error: "Loại buổi lễ không hợp lệ" };
   }
 
@@ -52,6 +52,8 @@ export function parseServiceMutationPayload(raw: unknown): { ok: true; data: Par
   if (!Number.isFinite(points) || points <= 0) {
     return { ok: false, error: "Điểm buổi lễ không hợp lệ" };
   }
+
+  const type = servicePeriod === "ADORATION" ? "ADORATION" : requestedType;
 
   const { startsAt, endsAt } = resolveServiceDateTime({
     serviceDate,

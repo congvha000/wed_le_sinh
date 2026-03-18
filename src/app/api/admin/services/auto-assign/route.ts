@@ -18,7 +18,6 @@ type ServiceLite = {
   points: number;
   startsAt: Date;
   endsAt: Date;
-  existingAssignments: { pairId: string; role: string }[];
 };
 
 type ScheduledSlot = {
@@ -35,6 +34,18 @@ function canServeFourPeople(levels: string[]) {
 
 function getRequiredPairCount(type: string) {
   return type === "FOUR_PEOPLE" ? 2 : 1;
+}
+
+function canServeService(pair: PairLite, service: ServiceLite) {
+  if (service.type === "ADORATION") {
+    return pair.level === "LEVEL_3";
+  }
+
+  if (service.type === "FOUR_PEOPLE") {
+    return ["LEVEL_2", "LEVEL_3"].includes(pair.level);
+  }
+
+  return true;
 }
 
 function scorePair(
@@ -74,6 +85,8 @@ export async function POST(req: Request) {
       return Response.json({ error: "Thiếu weekStart" }, { status: 400 });
     }
 
+    await syncPairTotals(prisma);
+
     const start = parseWeekStart(weekStart);
     const end = addDays(start, 7);
 
@@ -110,7 +123,6 @@ export async function POST(req: Request) {
         points: Number(service.points),
         startsAt: service.startsAt,
         endsAt: service.endsAt,
-        existingAssignments: service.assignments.map((assignment) => ({ pairId: assignment.pairId, role: String(assignment.role) })),
       }))
       .sort((a, b) => {
         const requiredDiff = getRequiredPairCount(b.type) - getRequiredPairCount(a.type);
@@ -119,16 +131,9 @@ export async function POST(req: Request) {
         return a.startsAt.getTime() - b.startsAt.getTime();
       });
 
-    const weekPointsAlreadyApplied = new Map<string, number>();
-    for (const service of services) {
-      for (const assignment of service.existingAssignments) {
-        weekPointsAlreadyApplied.set(assignment.pairId, (weekPointsAlreadyApplied.get(assignment.pairId) ?? 0) + service.points);
-      }
-    }
-
     const runtimePoints = new Map<string, number>();
     for (const pair of validPairs) {
-      runtimePoints.set(pair.id, pair.totalPoints - (weekPointsAlreadyApplied.get(pair.id) ?? 0));
+      runtimePoints.set(pair.id, pair.totalPoints);
     }
 
     const scheduledByPairId = new Map<string, ScheduledSlot[]>();
@@ -137,6 +142,7 @@ export async function POST(req: Request) {
 
     for (const service of services) {
       const candidates = validPairs.filter((pair) => {
+        if (!canServeService(pair, service)) return false;
         const busyDates = busyByPairId.get(pair.id) ?? [];
         if (busyDates.some((busyDate) => sameDate(busyDate, service.startsAt))) return false;
         const existingSlots = scheduledByPairId.get(pair.id) ?? [];
@@ -165,14 +171,13 @@ export async function POST(req: Request) {
         continue;
       }
 
-      const eligible = candidates.filter((pair) => ["LEVEL_2", "LEVEL_3"].includes(pair.level));
       let bestCombo: [PairLite, PairLite] | null = null;
       let bestScore = Number.POSITIVE_INFINITY;
 
-      for (let i = 0; i < eligible.length; i += 1) {
-        for (let j = i + 1; j < eligible.length; j += 1) {
-          const first = eligible[i];
-          const second = eligible[j];
+      for (let i = 0; i < candidates.length; i += 1) {
+        for (let j = i + 1; j < candidates.length; j += 1) {
+          const first = candidates[i];
+          const second = candidates[j];
           if (!canServeFourPeople([first.level, second.level])) continue;
           const comboScore = scoreCombo(first, second, runtimePoints, scheduledByPairId, service);
           if (comboScore < bestScore) {
