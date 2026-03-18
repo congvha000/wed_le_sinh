@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import WorkspaceShell from "@/components/workspace-shell";
 import AdminServicesPanel from "@/components/admin-services-panel";
 import { getAdminServicesPageData } from "@/lib/admin-page-data";
+import { formatDateInputValue } from "@/lib/date-utils";
 
 type AdminServicesPageProps = {
   searchParams?: Promise<{
@@ -28,7 +29,7 @@ export default async function AdminServicesPage({ searchParams }: AdminServicesP
       <AdminServicesPanel
         key={selectedWeek}
         selectedWeek={selectedWeek}
-        targetWeekStart={data.targetWeekStart.toISOString()}
+        targetWeekStart={formatDateInputValue(data.targetWeekStart)}
         services={data.services.map((service) => ({
           id: service.id,
           title: service.title,

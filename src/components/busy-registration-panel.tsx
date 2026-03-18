@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { addDays, formatDateInputValue, formatWeekdayDateLabel, parseDateOnly } from "@/lib/date-utils";
 
 type BusyRegistrationPanelProps = {
   pairId: string | null;
@@ -30,33 +31,25 @@ export default function BusyRegistrationPanel({
   legacyBusyDates,
 }: BusyRegistrationPanelProps) {
   const router = useRouter();
-  const [selectedBusyDate, setSelectedBusyDate] = useState<string>(selectedDate ? toInputDate(new Date(selectedDate)) : "");
+  const [selectedBusyDate, setSelectedBusyDate] = useState<string>(selectedDate ?? "");
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<StatusState>({ type: "", message: "" });
 
-  const partnerBusyDate = partnerDate ? toInputDate(new Date(partnerDate)) : "";
-  const legacyBusyDateSet = useMemo(
-    () => new Set(legacyBusyDates.map((date) => toInputDate(new Date(date)))),
-    [legacyBusyDates],
-  );
+  const partnerBusyDate = partnerDate ?? "";
+  const legacyBusyDateSet = useMemo(() => new Set(legacyBusyDates), [legacyBusyDates]);
 
   const weekDates = useMemo(() => {
-    const start = new Date(nextWeekStart);
+    const start = parseDateOnly(nextWeekStart);
 
     return Array.from({ length: 7 }).map((_, index) => {
-      const date = new Date(start);
-      date.setDate(start.getDate() + index);
+      const date = addDays(start, index);
+      const value = formatDateInputValue(date);
 
       return {
-        fullLabel: date.toLocaleDateString("vi-VN", {
-          weekday: "long",
-          day: "2-digit",
-          month: "2-digit",
-          year: "numeric",
-        }),
-        weekday: date.toLocaleDateString("vi-VN", { weekday: "short" }),
-        day: date.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" }),
-        value: toInputDate(date),
+        fullLabel: formatWeekdayDateLabel(date),
+        weekday: new Intl.DateTimeFormat("vi-VN", { weekday: "short", timeZone: "UTC" }).format(date),
+        day: new Intl.DateTimeFormat("vi-VN", { day: "2-digit", month: "2-digit", timeZone: "UTC" }).format(date),
+        value,
       };
     });
   }, [nextWeekStart]);
@@ -209,13 +202,6 @@ export default function BusyRegistrationPanel({
       </div>
     </section>
   );
-}
-
-function toInputDate(date: Date) {
-  const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, "0");
-  const day = `${date.getDate()}`.padStart(2, "0");
-  return `${year}-${month}-${day}`;
 }
 
 function formatInputDate(value: string) {

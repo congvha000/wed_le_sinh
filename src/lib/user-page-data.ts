@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getUserContext } from "@/lib/get-user-context";
-import { addMonths, formatMonthLabel, getMonthKey, getNextWeekStart, startOfMonth } from "@/lib/date-utils";
+import { addMonths, formatDateInputValue, formatMonthLabel, getMonthKey, getNextWeekStart, startOfMonth } from "@/lib/date-utils";
 
 export async function requireUserContext() {
   const ctx = await getUserContext();
@@ -22,10 +22,7 @@ export async function requireUserContext() {
 }
 
 function toDateKey(date: Date) {
-  const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, "0");
-  const day = `${date.getDate()}`.padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  return formatDateInputValue(date);
 }
 
 export async function getUserPageData() {

@@ -1,6 +1,7 @@
 import { BusyRequestStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { parseWeekStart, requireDbUser, sameDate, startOfDay } from "@/lib/api-access";
+import { addDays, formatDateLabel } from "@/lib/date-utils";
 
 export async function POST(req: Request) {
   const authResult = await requireDbUser("USER");
@@ -16,10 +17,9 @@ export async function POST(req: Request) {
     }
 
     const weekStartDate = parseWeekStart(weekStart);
-    const weekEndDate = new Date(weekStartDate);
-    weekEndDate.setDate(weekStartDate.getDate() + 7);
+    const weekEndDate = addDays(weekStartDate, 7);
 
-    const selectedDate = normalizedDate ? startOfDay(new Date(normalizedDate)) : null;
+    const selectedDate = normalizedDate ? startOfDay(normalizedDate) : null;
     if (selectedDate && Number.isNaN(selectedDate.getTime())) {
       return Response.json({ error: "Ngày đăng ký không hợp lệ" }, { status: 400 });
     }
@@ -83,7 +83,7 @@ export async function POST(req: Request) {
       const sameDayItems = existingForDay.filter((item) => sameDate(item.busyDate, selectedDate));
 
       if (sameDayItems.length >= busyWindow.maxPairsPerDay) {
-        throw new Error(`Ngày ${selectedDate.toLocaleDateString("vi-VN")} đã đủ ${busyWindow.maxPairsPerDay} cặp bận`);
+        throw new Error(`Ngày ${formatDateLabel(selectedDate)} đã đủ ${busyWindow.maxPairsPerDay} cặp bận`);
       }
 
       const nextQueueOrder = sameDayItems.reduce((max, item) => Math.max(max, item.queueOrder), 0) + 1;

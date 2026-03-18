@@ -1,3 +1,5 @@
+import { combineUtcDateAndTime, formatDateInputValue, formatTimeValue } from "@/lib/date-utils";
+
 export type ServicePeriod = "MORNING" | "AFTERNOON" | "EXTRA";
 
 export const SERVICE_TIME_SLOTS: Record<
@@ -35,16 +37,8 @@ export const SERVICE_PERIOD_OPTIONS: Array<{ value: ServicePeriod; label: string
   { value: "EXTRA", label: "Lễ ngoài giờ" },
 ];
 
-function pad(value: number) {
-  return `${value}`.padStart(2, "0");
-}
-
 export function combineDateAndTime(dateValue: string, timeValue: string) {
-  const [year, month, day] = dateValue.split("-").map(Number);
-  const [hour, minute] = timeValue.split(":").map(Number);
-
-  const date = new Date(year, (month || 1) - 1, day || 1, hour || 0, minute || 0, 0, 0);
-  return date;
+  return combineUtcDateAndTime(dateValue, timeValue);
 }
 
 export function resolveServiceDateTime(input: {
@@ -54,9 +48,9 @@ export function resolveServiceDateTime(input: {
 }) {
   const slot = SERVICE_TIME_SLOTS[input.servicePeriod];
   const timeValue = input.customTime?.trim() || slot.defaultTime;
-  const startsAt = combineDateAndTime(input.serviceDate, timeValue);
+  const startsAt = combineUtcDateAndTime(input.serviceDate, timeValue);
   const endsAt = new Date(startsAt);
-  endsAt.setMinutes(endsAt.getMinutes() + slot.durationMinutes);
+  endsAt.setUTCMinutes(endsAt.getUTCMinutes() + slot.durationMinutes);
 
   return {
     startsAt,
@@ -67,7 +61,7 @@ export function resolveServiceDateTime(input: {
 }
 
 export function getServicePeriodFromDate(date: Date): ServicePeriod {
-  const hour = date.getHours();
+  const hour = date.getUTCHours();
   if (hour < 12) return "MORNING";
   if (hour < 18) return "AFTERNOON";
   return "EXTRA";
@@ -78,14 +72,13 @@ export function getServicePeriodLabel(period: ServicePeriod) {
 }
 
 export function formatTime(date: Date) {
-  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  return formatTimeValue(date);
 }
 
-export function formatDateInputValue(date = new Date()) {
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-}
+export { formatDateInputValue };
 
 export function buildServiceTitle(serviceDate: string, servicePeriod: ServicePeriod, customTime?: string | null) {
+  void serviceDate;
   const label = getServicePeriodLabel(servicePeriod);
   const timePart = customTime?.trim() ? ` - ${customTime.trim()}` : "";
   return `${label}${timePart}`;

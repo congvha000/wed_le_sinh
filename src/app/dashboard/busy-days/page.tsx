@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import WorkspaceShell from "@/components/workspace-shell";
 import BusyRegistrationPanel from "@/components/busy-registration-panel";
 import { getUserPageData } from "@/lib/user-page-data";
+import { formatDateInputValue } from "@/lib/date-utils";
 
 export default async function DashboardBusyDaysPage() {
   const data = await getUserPageData();
@@ -20,11 +21,11 @@ export default async function DashboardBusyDaysPage() {
         pairId={data.pair?.id ?? null}
         pairName={data.pair?.name ?? null}
         partnerName={data.partnerName}
-        nextWeekStart={data.nextWeekStart.toISOString()}
+        nextWeekStart={formatDateInputValue(data.nextWeekStart)}
         windowOpen={Boolean(data.busyWindow?.isOpen)}
-        selectedDate={data.currentUserBusyRequest?.busyDate.toISOString() ?? null}
-        partnerDate={data.partnerBusyRequest?.busyDate.toISOString() ?? null}
-        legacyBusyDates={data.legacyBusyDates.map((date) => date.toISOString())}
+        selectedDate={data.currentUserBusyRequest ? formatDateInputValue(data.currentUserBusyRequest.busyDate) : null}
+        partnerDate={data.partnerBusyRequest ? formatDateInputValue(data.partnerBusyRequest.busyDate) : null}
+        legacyBusyDates={data.legacyBusyDates.map((date) => formatDateInputValue(date))}
       />
     </WorkspaceShell>
   );

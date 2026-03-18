@@ -15,6 +15,7 @@ import {
   getServicePeriodLabel,
   type ServicePeriod,
 } from "@/config/service-time-slots";
+import { formatDateLabel, formatWeekdayDateLabel } from "@/lib/date-utils";
 
 type PairItem = {
   id: string;
@@ -53,6 +54,17 @@ type Props = {
   pairs: PairItem[];
 };
 
+type ServiceDisplay = {
+  dateKey: string;
+  dateLabel: string;
+  title: string;
+  period: ServicePeriod;
+  periodLabel: string;
+  hasCustomTime: boolean;
+  timeLabel: string;
+  statusLabel: string;
+};
+
 function getPairLevelLabel(level: string) {
   return level.replace("LEVEL_", "LV");
 }
@@ -70,6 +82,21 @@ function getServiceTypeLabel(type: string) {
   }
 }
 
+function getServiceStatusLabel(status: string) {
+  switch (status) {
+    case "PUBLISHED":
+      return "Đang hiển thị";
+    case "LOCKED":
+      return "Đã khóa";
+    case "COMPLETED":
+      return "Hoàn tất";
+    case "DRAFT":
+      return "Nháp";
+    default:
+      return status;
+  }
+}
+
 function getRoleLabel(role: string) {
   switch (role) {
     case "CANDLE":
@@ -81,16 +108,12 @@ function getRoleLabel(role: string) {
   }
 }
 
-function formatDateTime(value: string) {
-  return new Date(value).toLocaleString("vi-VN");
-}
-
 function calculateAutoPoint(serviceDate: string, servicePeriod: ServicePeriod, customTime: string) {
   if (!serviceDate) return "1";
   const fallbackTime = SERVICE_TIME_SLOTS[servicePeriod].defaultTime;
   const start = combineDateAndTime(serviceDate, customTime.trim() || fallbackTime);
-  const day = start.getDay();
-  const hour = start.getHours();
+  const day = start.getUTCDay();
+  const hour = start.getUTCHours();
 
   if ((day === 6 && hour >= 12) || (day === 0 && hour < 12)) {
     return "1.2";
@@ -105,6 +128,34 @@ function getServiceRequiredPairCount(service: ServiceItem) {
 
 function isServiceFullyAssigned(service: ServiceItem) {
   return service.assignments.length >= getServiceRequiredPairCount(service);
+}
+
+function buildServiceDisplay(service: ServiceItem): ServiceDisplay {
+  const start = new Date(service.startsAt);
+  const period = getServicePeriodFromDate(start);
+  const timeLabel = formatTime(start);
+  const hasCustomTime = timeLabel !== SERVICE_TIME_SLOTS[period].defaultTime;
+  const dateKey = formatDateInputValue(start);
+  const dateLabel = formatDateLabel(start);
+
+  const rawTitle = service.title?.trim();
+  const defaultSlotTitle = `${getServicePeriodLabel(period)} - ${SERVICE_TIME_SLOTS[period].defaultTime}`;
+  const normalizedTitle = !rawTitle
+    ? buildServiceTitle(dateKey, period, hasCustomTime ? timeLabel : null)
+    : rawTitle === defaultSlotTitle
+      ? getServicePeriodLabel(period)
+      : rawTitle;
+
+  return {
+    dateKey,
+    dateLabel,
+    title: normalizedTitle,
+    period,
+    periodLabel: getServicePeriodLabel(period),
+    hasCustomTime,
+    timeLabel,
+    statusLabel: getServiceStatusLabel(service.status),
+  };
 }
 
 function getFormStateFromService(service: ServiceItem) {
@@ -125,7 +176,7 @@ function getFormStateFromService(service: ServiceItem) {
 export default function AdminServicesPanel({ selectedWeek, targetWeekStart, services, pairs }: Props) {
   const router = useRouter();
   const weekLabel = selectedWeek === "current" ? "tuần này" : "tuần sau";
-  const defaultDate = formatDateInputValue(new Date(targetWeekStart));
+  const defaultDate = targetWeekStart;
   const [serviceDate, setServiceDate] = useState(defaultDate);
   const [servicePeriod, setServicePeriod] = useState<ServicePeriod>("MORNING");
   const [customTime, setCustomTime] = useState("");
@@ -140,17 +191,24 @@ export default function AdminServicesPanel({ selectedWeek, targetWeekStart, serv
     text: "",
   });
 
+  const serviceDisplayMap = useMemo(
+    () => new Map(services.map((service) => [service.id, buildServiceDisplay(service)])),
+    [services],
+  );
+
   const groupedServices = useMemo(() => {
-    const map = new Map<string, ServiceItem[]>();
+    const map = new Map<string, { label: string; items: ServiceItem[] }>();
+
     for (const service of services) {
-      const dayKey = new Date(service.startsAt).toLocaleDateString("vi-VN");
-      if (!map.has(dayKey)) {
-        map.set(dayKey, []);
+      const display = serviceDisplayMap.get(service.id) ?? buildServiceDisplay(service);
+      if (!map.has(display.dateKey)) {
+        map.set(display.dateKey, { label: display.dateLabel, items: [] });
       }
-      map.get(dayKey)!.push(service);
+      map.get(display.dateKey)!.items.push(service);
     }
-    return Array.from(map.entries());
-  }, [services]);
+
+    return Array.from(map.entries()).map(([key, value]) => ({ key, ...value }));
+  }, [serviceDisplayMap, services]);
 
   const assignableServices = useMemo(
     () => services.filter((service) => !isServiceFullyAssigned(service)),
@@ -351,7 +409,8 @@ export default function AdminServicesPanel({ selectedWeek, targetWeekStart, serv
         </div>
 
         <div className="note-box">
-          Bạn đang thao tác cho <strong>{weekLabel}</strong>. Ngày mặc định sẽ bắt đầu từ <strong>{defaultDate}</strong>.
+          Bạn đang thao tác cho <strong>{weekLabel}</strong>.
+          <br />Ngày mặc định sẽ bắt đầu từ <strong>{formatWeekdayDateLabel(defaultDate)}</strong>.
         </div>
 
         {editingService?.assignments.length ? (
@@ -434,9 +493,9 @@ export default function AdminServicesPanel({ selectedWeek, targetWeekStart, serv
         </div>
 
         <div className="note-box">
-          Tiêu đề tự tạo: <strong>{autoTitle}</strong>
-          <br />Giờ sẽ lưu: <strong>{resolvedPreviewTime}</strong>
-          <br />Giờ mặc định hiện tại của {getServicePeriodLabel(servicePeriod).toLowerCase()} là <strong>{SERVICE_TIME_SLOTS[servicePeriod].defaultTime}</strong>
+          Tên hiển thị ngoài lịch: <strong>{autoTitle}</strong>
+          <br />Giờ nội bộ để xếp lịch: <strong>{resolvedPreviewTime}</strong>
+          <br />Nếu để trống giờ, danh sách chỉ hiện tên buổi lễ đã chọn, không lặp thêm thời gian.
         </div>
 
         <div className="button-row">
@@ -475,11 +534,14 @@ export default function AdminServicesPanel({ selectedWeek, targetWeekStart, serv
 
         <select className="input" value={assignServiceId} onChange={(event) => setAssignServiceId(event.target.value)}>
           <option value="">Chọn buổi lễ còn thiếu cặp</option>
-          {assignableServices.map((service) => (
-            <option key={service.id} value={service.id}>
-              {service.title} - {formatDateTime(service.startsAt)}
-            </option>
-          ))}
+          {assignableServices.map((service) => {
+            const display = serviceDisplayMap.get(service.id) ?? buildServiceDisplay(service);
+            return (
+              <option key={service.id} value={service.id}>
+                {display.dateLabel} · {display.title}
+              </option>
+            );
+          })}
         </select>
 
         <select className="input" value={assignPairId} onChange={(event) => setAssignPairId(event.target.value)}>
@@ -512,28 +574,25 @@ export default function AdminServicesPanel({ selectedWeek, targetWeekStart, serv
           <div className="empty-state">{selectedWeek === "current" ? "Tuần này" : "Tuần sau"} hiện chưa có buổi lễ nào.</div>
         ) : (
           <div className="stack-sm">
-            {groupedServices.map(([day, items]) => (
-              <div key={day} className="card card-soft section-pad stack-sm">
+            {groupedServices.map((group) => (
+              <div key={group.key} className="card card-soft section-pad stack-sm">
                 <div>
-                  <div className="list-title">{day}</div>
-                  <div className="list-meta">{items.length} buổi lễ</div>
+                  <div className="list-title">{group.label}</div>
+                  <div className="list-meta">{group.items.length} buổi lễ</div>
                 </div>
 
-                {items.map((service) => {
-                  const serviceDate = new Date(service.startsAt);
-                  const period = getServicePeriodFromDate(serviceDate);
+                {group.items.map((service) => {
+                  const display = serviceDisplayMap.get(service.id) ?? buildServiceDisplay(service);
                   const requiredPairs = getServiceRequiredPairCount(service);
                   const missingPairs = Math.max(0, requiredPairs - service.assignments.length);
 
                   return (
                     <div key={service.id} className="list-card" style={{ alignItems: "flex-start" }}>
                       <div>
-                        <div className="list-title">{service.title}</div>
-                        <div className="list-subtitle">
-                          {getServicePeriodLabel(period)} · {formatDateTime(service.startsAt)}
-                        </div>
+                        <div className="list-title">{display.title}</div>
+                        <div className="list-subtitle">Ngày {display.dateLabel}</div>
                         <div className="list-meta">
-                          {getServiceTypeLabel(service.type)} · {service.points} điểm · {service.status}
+                          {getServiceTypeLabel(service.type)} · {service.points} điểm · {display.statusLabel}
                           {missingPairs === 0 ? " · Đã đủ cặp" : ` · Còn thiếu ${missingPairs} cặp`}
                         </div>
                         <div className="list-meta" style={{ marginTop: 6 }}>

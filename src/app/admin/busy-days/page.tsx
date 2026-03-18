@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import WorkspaceShell from "@/components/workspace-shell";
 import AdminBusyDaysPanel from "@/components/admin-busy-days-panel";
 import { getAdminBusyDaysPageData } from "@/lib/admin-page-data";
+import { formatDateInputValue } from "@/lib/date-utils";
 
 type AdminBusyDaysPageProps = {
   searchParams?: Promise<{
@@ -27,7 +28,7 @@ export default async function AdminBusyDaysPage({ searchParams }: AdminBusyDaysP
     >
       <AdminBusyDaysPanel
         selectedWeek={selectedWeek}
-        targetWeekStart={data.targetWeekStart.toISOString()}
+        targetWeekStart={formatDateInputValue(data.targetWeekStart)}
         busyWindow={
           data.busyWindow
             ? {
@@ -38,7 +39,7 @@ export default async function AdminBusyDaysPage({ searchParams }: AdminBusyDaysP
                 requests: data.busyWindow.requests.map((request) => ({
                   id: request.id,
                   pairName: request.pair.name,
-                  busyDate: request.busyDate.toISOString(),
+                  busyDate: formatDateInputValue(request.busyDate),
                   queueOrder: request.queueOrder,
                 })),
               }

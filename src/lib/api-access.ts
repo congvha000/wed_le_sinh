@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { startOfUtcDay } from "@/lib/date-utils";
 
 export async function requireDbUser(role?: "ADMIN" | "USER") {
   const session = await auth();
@@ -30,18 +31,16 @@ export async function requireDbUser(role?: "ADMIN" | "USER") {
   return { user };
 }
 
-export function startOfDay(value: Date) {
-  const date = new Date(value);
-  date.setHours(0, 0, 0, 0);
-  return date;
+export function startOfDay(value: Date | string) {
+  return startOfUtcDay(value);
 }
 
 export function parseWeekStart(input: string | Date) {
-  return startOfDay(new Date(input));
+  return startOfUtcDay(input);
 }
 
-export function sameDate(a: Date, b: Date) {
-  return startOfDay(a).getTime() === startOfDay(b).getTime();
+export function sameDate(a: Date | string, b: Date | string) {
+  return startOfUtcDay(a).getTime() === startOfUtcDay(b).getTime();
 }
 
 export function overlaps(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) {

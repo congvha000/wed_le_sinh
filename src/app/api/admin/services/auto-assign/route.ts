@@ -1,6 +1,7 @@
 import { AssignmentRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { overlaps, parseWeekStart, requireDbUser, sameDate } from "@/lib/api-access";
+import { addDays } from "@/lib/date-utils";
 import { syncPairTotals, uniquePairIds } from "@/lib/pair-point-sync";
 
 type PairLite = {
@@ -74,8 +75,7 @@ export async function POST(req: Request) {
     }
 
     const start = parseWeekStart(weekStart);
-    const end = new Date(start);
-    end.setDate(start.getDate() + 7);
+    const end = addDays(start, 7);
 
     const [servicesRaw, pairsRaw, busyWindow] = await Promise.all([
       prisma.service.findMany({

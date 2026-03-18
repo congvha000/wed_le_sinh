@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { formatDateLabel, formatWeekdayDateLabel } from "@/lib/date-utils";
 
 type BusyWindowItem = {
   isOpen: boolean;
@@ -41,7 +42,7 @@ export default function AdminBusyDaysPanel({ selectedWeek, targetWeekStart, busy
   const groupedBusyRequests = useMemo(() => {
     const map = new Map<string, NonNullable<BusyWindowItem>["requests"]>();
     for (const request of busyWindow?.requests ?? []) {
-      const dayKey = new Date(request.busyDate).toLocaleDateString("vi-VN");
+      const dayKey = formatDateLabel(request.busyDate);
       if (!map.has(dayKey)) {
         map.set(dayKey, []);
       }
@@ -122,7 +123,7 @@ export default function AdminBusyDaysPanel({ selectedWeek, targetWeekStart, busy
         <div className="list-card">
           <div>
             <div className="list-title">Tuần mục tiêu: {weekLabel}</div>
-            <div className="list-subtitle">Bắt đầu từ {new Date(targetWeekStart).toLocaleDateString("vi-VN")}</div>
+            <div className="list-subtitle">Bắt đầu từ {formatWeekdayDateLabel(targetWeekStart)}</div>
           </div>
         </div>
 
