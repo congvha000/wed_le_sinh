@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { requireDbUser } from "@/lib/api-access";
 import { parseServiceMutationPayload } from "@/lib/service-mutation";
 import { syncPairTotals, uniquePairIds } from "@/lib/pair-point-sync";
+import { invalidateScheduleAcksForPairs, resolveScheduleWeekStart } from "@/lib/schedule-ack";
 
 export async function POST(req: Request) {
   const authResult = await requireDbUser("ADMIN");
@@ -48,10 +49,12 @@ export async function POST(req: Request) {
       service.endsAt.getTime() !== endsAt.getTime();
     const pointsChanged = Number(service.points) !== Number(points);
     const affectedPairIds = uniquePairIds(service.assignments.map((assignment) => assignment.pairId));
+    const previousWeekStart = resolveScheduleWeekStart(service.startsAt);
 
     await prisma.$transaction(async (tx) => {
       if (structureChanged && service.assignments.length > 0) {
         await tx.assignment.deleteMany({ where: { serviceId: service.id } });
+        await invalidateScheduleAcksForPairs(tx, affectedPairIds, previousWeekStart);
       }
 
       await tx.service.update({

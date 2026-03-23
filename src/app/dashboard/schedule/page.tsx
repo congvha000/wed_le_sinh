@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 
+import ScheduleAckButton from "@/components/schedule-ack-button";
 import WorkspaceShell from "@/components/workspace-shell";
 import {
   SERVICE_TIME_SLOTS,
@@ -56,20 +57,37 @@ export default async function DashboardSchedulePage() {
           <h2 style={{ margin: "8px 0 0" }}>Các buổi sắp tới</h2>
         </div>
 
-        {!data.pair || data.pair.assignments.length === 0 ? (
+        {!data.pair || data.scheduleWeeks.length === 0 ? (
           <div className="empty-state">Hiện chưa có lịch phục vụ sắp tới.</div>
         ) : (
           <div className="stack-sm">
-            {data.pair.assignments.map((item) => (
-              <div key={item.id} className="list-card list-card-column-mobile" style={{ alignItems: "flex-start" }}>
-                <div style={{ flex: 1 }}>
-                  <div className="list-title">{normalizeServiceTitle(item.service.title, item.service.startsAt.toISOString(), item.service.type)}</div>
-                  <div className="list-subtitle">Ngày {formatDateLabel(item.service.startsAt.toISOString())}</div>
-                  <div className="list-meta">
-                    Điểm buổi lễ: {Number(item.service.points)} · Kiểu lễ: {getServiceTypeLabel(item.service.type)}
+            {data.scheduleWeeks.map((week) => (
+              <div key={week.weekStart} className="card card-soft section-pad stack-sm">
+                <div className="section-heading">
+                  <div>
+                    <div className="list-title">
+                      Tuần {formatDateLabel(week.weekStart)} - {formatDateLabel(week.weekEnd)}
+                    </div>
+                    <div className="list-meta">{week.assignments.length} buổi đã được phân công</div>
                   </div>
+
+                  <ScheduleAckButton weekStart={week.weekStart} acknowledgedAt={week.acknowledgedAt} />
                 </div>
-                <span className="badge badge-muted">Đã phân công</span>
+
+                <div className="stack-sm">
+                  {week.assignments.map((item) => (
+                    <div key={item.id} className="list-card list-card-column-mobile" style={{ alignItems: "flex-start" }}>
+                      <div style={{ flex: 1 }}>
+                        <div className="list-title">{normalizeServiceTitle(item.service.title, item.service.startsAt.toISOString(), item.service.type)}</div>
+                        <div className="list-subtitle">Ngày {formatDateLabel(item.service.startsAt.toISOString())}</div>
+                        <div className="list-meta">
+                          Điểm buổi lễ: {Number(item.service.points)} · Kiểu lễ: {getServiceTypeLabel(item.service.type)}
+                        </div>
+                      </div>
+                      <span className="badge badge-muted">Đã phân công</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             ))}
           </div>

@@ -70,3 +70,16 @@ export const assignServiceSchema = z.object({
   role: z.enum(["GENERAL", "CANDLE", "INCENSE"]),
   pairId: z.string().cuid(),
 });
+export const swapAssignmentsSchema = z
+  .object({
+    firstAssignmentId: z.string().cuid(),
+    secondAssignmentId: z.string().cuid(),
+  })
+  .refine((data) => data.firstAssignmentId !== data.secondAssignmentId, {
+    message: "Hai lượt gán phải khác nhau",
+    path: ["secondAssignmentId"],
+  });
+
+export const scheduleAckSchema = z.object({
+  weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Tuần xác nhận không hợp lệ"),
+});

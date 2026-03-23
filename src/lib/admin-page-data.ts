@@ -4,6 +4,7 @@ import { getUserContext } from "@/lib/get-user-context";
 import { syncPairTotals } from "@/lib/pair-point-sync";
 import {
   addMonths,
+  formatDateLabel,
   formatMonthLabel,
   getCurrentWeekStart,
   getMonthKey,
@@ -130,6 +131,109 @@ async function getBusyWindowForWeek(weekStart: Date) {
   });
 }
 
+
+async function getScheduleConfirmationsForWeek(weekStart: Date) {
+  const weekEnd = getNextWeekEnd(weekStart);
+
+  const users = await prisma.user.findMany({
+    where: {
+      role: "USER",
+      approved: true,
+      pairMembers: {
+        some: {
+          pair: {
+            assignments: {
+              some: {
+                service: {
+                  startsAt: {
+                    gte: weekStart,
+                    lt: weekEnd,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    orderBy: [{ name: "asc" }, { email: "asc" }],
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      pairMembers: {
+        select: {
+          pair: {
+            select: {
+              name: true,
+              assignments: {
+                where: {
+                  service: {
+                    startsAt: {
+                      gte: weekStart,
+                      lt: weekEnd,
+                    },
+                  },
+                },
+                orderBy: {
+                  service: {
+                    startsAt: "asc",
+                  },
+                },
+                select: {
+                  id: true,
+                  service: {
+                    select: {
+                      title: true,
+                      startsAt: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      scheduleAcks: {
+        where: {
+          weekStart,
+        },
+        select: {
+          createdAt: true,
+        },
+      },
+    },
+  });
+
+  return users
+    .map((user) => {
+      const pairWithAssignments = user.pairMembers.find((item) => item.pair.assignments.length > 0)?.pair;
+      if (!pairWithAssignments) {
+        return null;
+      }
+
+      return {
+        userId: user.id,
+        email: user.email,
+        name: user.name,
+        pairName: pairWithAssignments.name,
+        acknowledgedAt: user.scheduleAcks[0]?.createdAt ?? null,
+        totalAssignments: pairWithAssignments.assignments.length,
+        assignmentLabels: pairWithAssignments.assignments.map(
+          (assignment) => `${formatDateLabel(assignment.service.startsAt)} · ${assignment.service.title}`,
+        ),
+      };
+    })
+    .filter((item): item is NonNullable<typeof item> => Boolean(item))
+    .sort((a, b) => {
+      if (Boolean(a.acknowledgedAt) !== Boolean(b.acknowledgedAt)) {
+        return a.acknowledgedAt ? 1 : -1;
+      }
+
+      return a.pairName.localeCompare(b.pairName, "vi");
+    });
+}
+
 export async function requireAdminContext() {
   const ctx = await getUserContext();
 
@@ -148,7 +252,11 @@ export async function getAdminServicesPageData(weekMode: "current" | "next" = "n
   const ctx = await requireAdminContext();
   const targetWeekStart = weekMode === "current" ? getCurrentWeekStart() : getNextWeekStart();
 
-  const [services, pairs] = await Promise.all([getServicesForWeek(targetWeekStart), getPairsForAdmin()]);
+  const [services, pairs, scheduleConfirmations] = await Promise.all([
+    getServicesForWeek(targetWeekStart),
+    getPairsForAdmin(),
+    getScheduleConfirmationsForWeek(targetWeekStart),
+  ]);
 
   return {
     ctx,
@@ -156,6 +264,7 @@ export async function getAdminServicesPageData(weekMode: "current" | "next" = "n
     targetWeekStart,
     services,
     pairs,
+    scheduleConfirmations,
   };
 }
 

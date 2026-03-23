@@ -1,24 +1,39 @@
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/require-admin";
+import { requireDbUser } from "@/lib/api-access";
 import { adminResetPasswordSchema } from "@/lib/validators";
 
 export async function POST(req: Request) {
+  const authResult = await requireDbUser("ADMIN");
+  if (authResult.error) return authResult.error;
+
   try {
-    const session = await requireAdmin();
-
-    if (!session) {
-      return Response.json({ error: "Forbidden" }, { status: 403 });
-    }
-
-    const json = await req.json();
-    const parsed = adminResetPasswordSchema.safeParse(json);
+    const parsed = adminResetPasswordSchema.safeParse(await req.json());
 
     if (!parsed.success) {
       return Response.json(
         { error: parsed.error.issues[0]?.message ?? "Payload không hợp lệ" },
         { status: 400 },
       );
+    }
+
+    const targetUser = await prisma.user.findUnique({
+      where: {
+        id: parsed.data.userId,
+      },
+      select: {
+        id: true,
+        role: true,
+        isActive: true,
+      },
+    });
+
+    if (!targetUser || targetUser.role !== "USER") {
+      return Response.json({ error: "Không tìm thấy tài khoản thành viên cần đặt lại mật khẩu" }, { status: 404 });
+    }
+
+    if (!targetUser.isActive) {
+      return Response.json({ error: "Tài khoản này đang bị khóa" }, { status: 400 });
     }
 
     const passwordHash = await bcrypt.hash(parsed.data.newPassword, 10);

@@ -39,6 +39,9 @@ export default function AdminUsersPanel({ pendingUsers, allUsers }: Props) {
     type: "",
     text: "",
   });
+  const [resetUserId, setResetUserId] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
 
   async function postJson(url: string, body: unknown) {
     const res = await fetch(url, {
@@ -50,6 +53,12 @@ export default function AdminUsersPanel({ pendingUsers, allUsers }: Props) {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data?.error || "Thao tác thất bại");
     return data;
+  }
+
+  function closeResetForm() {
+    setResetUserId("");
+    setNewPassword("");
+    setConfirmPassword("");
   }
 
   async function handleApproveUser(userId: string) {
@@ -76,11 +85,54 @@ export default function AdminUsersPanel({ pendingUsers, allUsers }: Props) {
       setLoading(`delete-${userId}`);
       setMessage({ type: "", text: "" });
       await postJson("/api/admin/users/delete", { userId });
+      if (resetUserId === userId) {
+        closeResetForm();
+      }
       toast.success("Đã xóa tài khoản.");
       setMessage({ type: "success", text: "Đã xóa tài khoản thành công." });
       router.refresh();
     } catch (error) {
       const text = error instanceof Error ? error.message : "Không thể xóa tài khoản.";
+      toast.error(text);
+      setMessage({ type: "error", text });
+    } finally {
+      setLoading("");
+    }
+  }
+
+  async function handleResetPassword(user: UserItem) {
+    try {
+      if (!newPassword.trim()) {
+        throw new Error("Vui lòng nhập mật khẩu mới.");
+      }
+
+      if (newPassword.trim().length < 6) {
+        throw new Error("Mật khẩu mới tối thiểu 6 ký tự.");
+      }
+
+      if (newPassword !== confirmPassword) {
+        throw new Error("Mật khẩu xác nhận không khớp.");
+      }
+
+      if (!window.confirm(`Đặt lại mật khẩu cho tài khoản ${user.name || user.email}?`)) {
+        return;
+      }
+
+      setLoading(`reset-${user.id}`);
+      setMessage({ type: "", text: "" });
+      await postJson("/api/admin/users/reset-password", {
+        userId: user.id,
+        newPassword: newPassword.trim(),
+      });
+      toast.success("Đã đặt lại mật khẩu cho thành viên.");
+      setMessage({
+        type: "success",
+        text: `Đã đặt lại mật khẩu cho ${user.name || user.email} thành công.`,
+      });
+      closeResetForm();
+      router.refresh();
+    } catch (error) {
+      const text = error instanceof Error ? error.message : "Không thể đặt lại mật khẩu.";
       toast.error(text);
       setMessage({ type: "error", text });
     } finally {
@@ -135,31 +187,102 @@ export default function AdminUsersPanel({ pendingUsers, allUsers }: Props) {
           <h2 style={{ margin: "8px 0 0" }}>Danh sách tài khoản</h2>
         </div>
 
+        <div className="note-box">
+          Admin có thể đặt lại mật khẩu cho tài khoản thành viên ngay tại đây.
+          <br />Sau khi đặt lại, thành viên dùng mật khẩu mới để đăng nhập.
+        </div>
+
         {allUsers.length === 0 ? (
           <div className="empty-state">Chưa có tài khoản thành viên nào.</div>
         ) : (
           <div className="stack-sm">
-            {allUsers.map((user) => (
-              <div key={user.id} className="list-card list-card-column-mobile" style={{ alignItems: "flex-start" }}>
-                <div style={{ flex: 1 }}>
-                  <div className="list-title">{user.name || "(Chưa có tên)"}</div>
-                  <div className="list-subtitle">{user.email}</div>
-                  <div className="list-meta">
-                    Trạng thái: {user.approved ? "Đã duyệt" : "Chưa duyệt"} · Hồ sơ: {user.profileCompleted ? "Đã đủ" : "Chưa đủ"}
-                    {" · "}Cặp: {user.pairName || "Chưa có"}
+            {allUsers.map((user) => {
+              const isResetOpen = resetUserId === user.id;
+              const isResetting = loading === `reset-${user.id}`;
+
+              return (
+                <div key={user.id} className="list-card list-card-column-mobile" style={{ alignItems: "flex-start" }}>
+                  <div style={{ flex: 1, width: "100%" }}>
+                    <div className="list-title">{user.name || "(Chưa có tên)"}</div>
+                    <div className="list-subtitle">{user.email}</div>
+                    <div className="list-meta">
+                      Trạng thái: {user.approved ? "Đã duyệt" : "Chưa duyệt"} · Hồ sơ: {user.profileCompleted ? "Đã đủ" : "Chưa đủ"}
+                      {" · "}Cặp: {user.pairName || "Chưa có"}
+                    </div>
+
+                    {isResetOpen ? (
+                      <div className="stack-sm" style={{ marginTop: 14 }}>
+                        <div className="dashboard-grid form-two-col">
+                          <div>
+                            <label className="field-label">Mật khẩu mới</label>
+                            <input
+                              className="input"
+                              type="password"
+                              value={newPassword}
+                              onChange={(event) => setNewPassword(event.target.value)}
+                              placeholder="Nhập mật khẩu mới"
+                            />
+                          </div>
+                          <div>
+                            <label className="field-label">Xác nhận mật khẩu</label>
+                            <input
+                              className="input"
+                              type="password"
+                              value={confirmPassword}
+                              onChange={(event) => setConfirmPassword(event.target.value)}
+                              placeholder="Nhập lại mật khẩu mới"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="button-row">
+                          <button
+                            className="button-primary"
+                            type="button"
+                            onClick={() => handleResetPassword(user)}
+                            disabled={isResetting}
+                          >
+                            {isResetting ? "Đang lưu..." : "Lưu mật khẩu mới"}
+                          </button>
+                          <button className="button-secondary" type="button" onClick={closeResetForm} disabled={isResetting}>
+                            Hủy
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="button-row" style={{ minWidth: 260, justifyContent: "flex-end" }}>
+                    <button
+                      className="button-secondary"
+                      type="button"
+                      onClick={() => {
+                        if (isResetOpen) {
+                          closeResetForm();
+                          return;
+                        }
+                        setResetUserId(user.id);
+                        setNewPassword("");
+                        setConfirmPassword("");
+                        setMessage({ type: "", text: "" });
+                      }}
+                      disabled={Boolean(loading) && !isResetOpen}
+                    >
+                      {isResetOpen ? "Đóng đặt lại mật khẩu" : "Đặt lại mật khẩu"}
+                    </button>
+
+                    <button
+                      className="button-danger"
+                      type="button"
+                      onClick={() => handleDeleteUser(user.id)}
+                      disabled={loading === `delete-${user.id}`}
+                    >
+                      {loading === `delete-${user.id}` ? "Đang xóa..." : "Xóa"}
+                    </button>
                   </div>
                 </div>
-
-                <button
-                  className="button-secondary"
-                  type="button"
-                  onClick={() => handleDeleteUser(user.id)}
-                  disabled={loading === `delete-${user.id}`}
-                >
-                  {loading === `delete-${user.id}` ? "Đang xóa..." : "Xóa"}
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>

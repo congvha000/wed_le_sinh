@@ -2,6 +2,7 @@ import { AssignmentRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireDbUser, overlaps, sameDate } from "@/lib/api-access";
 import { syncPairTotals } from "@/lib/pair-point-sync";
+import { invalidateScheduleAcksForPairs, resolveScheduleWeekStart } from "@/lib/schedule-ack";
 
 function canServeFourPeople(levels: string[]) {
   const sorted = [...levels].sort();
@@ -42,6 +43,8 @@ export async function POST(req: Request) {
       return Response.json({ error: "Cặp đã có lịch trùng giờ với buổi này" }, { status: 400 });
     }
 
+    const weekStart = resolveScheduleWeekStart(service.startsAt);
+
     if (service.type === "ADORATION") {
       if (!isEligibleForAdoration(String(pair.level))) {
         return Response.json({ error: "Chầu Thánh Thể chỉ nhận cặp LV3" }, { status: 400 });
@@ -53,6 +56,7 @@ export async function POST(req: Request) {
 
       await prisma.$transaction(async (tx) => {
         await tx.assignment.create({ data: { serviceId: service.id, pairId: pair.id, role: AssignmentRole.GENERAL } });
+        await invalidateScheduleAcksForPairs(tx, [pair.id], weekStart);
         await syncPairTotals(tx, [pair.id]);
       });
 
@@ -69,6 +73,7 @@ export async function POST(req: Request) {
 
       await prisma.$transaction(async (tx) => {
         await tx.assignment.create({ data: { serviceId: service.id, pairId: pair.id, role: nextRole } });
+        await invalidateScheduleAcksForPairs(tx, [pair.id], weekStart);
         await syncPairTotals(tx, [pair.id]);
       });
 
@@ -79,6 +84,7 @@ export async function POST(req: Request) {
 
     await prisma.$transaction(async (tx) => {
       await tx.assignment.create({ data: { serviceId: service.id, pairId: pair.id, role: AssignmentRole.GENERAL } });
+      await invalidateScheduleAcksForPairs(tx, [pair.id], weekStart);
       await syncPairTotals(tx, [pair.id]);
     });
 

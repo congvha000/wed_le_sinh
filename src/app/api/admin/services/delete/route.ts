@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { requireDbUser } from "@/lib/api-access";
 import { deleteServiceSchema } from "@/lib/validators";
 import { syncPairTotals, uniquePairIds } from "@/lib/pair-point-sync";
+import { invalidateScheduleAcksForPairs, resolveScheduleWeekStart } from "@/lib/schedule-ack";
 
 export async function POST(req: Request) {
   const authResult = await requireDbUser("ADMIN");
@@ -18,6 +19,7 @@ export async function POST(req: Request) {
       where: { id: parsed.data.serviceId },
       select: {
         id: true,
+        startsAt: true,
         assignments: {
           select: {
             pairId: true,
@@ -31,12 +33,14 @@ export async function POST(req: Request) {
     }
 
     const affectedPairIds = uniquePairIds(service.assignments.map((assignment) => assignment.pairId));
+    const weekStart = resolveScheduleWeekStart(service.startsAt);
 
     await prisma.$transaction(async (tx) => {
       await tx.service.delete({
         where: { id: service.id },
       });
 
+      await invalidateScheduleAcksForPairs(tx, affectedPairIds, weekStart);
       await syncPairTotals(tx, affectedPairIds);
     });
 

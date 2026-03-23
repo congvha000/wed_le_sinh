@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { overlaps, parseWeekStart, requireDbUser, sameDate } from "@/lib/api-access";
 import { addDays } from "@/lib/date-utils";
 import { syncPairTotals, uniquePairIds } from "@/lib/pair-point-sync";
+import { invalidateScheduleAcksForWeek } from "@/lib/schedule-ack";
 
 type PairLite = {
   id: string;
@@ -212,6 +213,7 @@ export async function POST(req: Request) {
       if (assignmentCreates.length > 0) {
         await tx.assignment.createMany({ data: assignmentCreates });
       }
+      await invalidateScheduleAcksForWeek(tx, start);
       await syncPairTotals(tx, affectedPairIds);
     });
 

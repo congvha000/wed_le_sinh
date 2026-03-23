@@ -47,11 +47,22 @@ type ServiceItem = {
   }[];
 };
 
+type ScheduleConfirmationItem = {
+  userId: string;
+  email: string;
+  name: string | null;
+  pairName: string;
+  acknowledgedAt: string | null;
+  totalAssignments: number;
+  assignmentLabels: string[];
+};
+
 type Props = {
   selectedWeek: "current" | "next";
   targetWeekStart: string;
   services: ServiceItem[];
   pairs: PairItem[];
+  scheduleConfirmations: ScheduleConfirmationItem[];
 };
 
 type ServiceDisplay = {
@@ -63,6 +74,16 @@ type ServiceDisplay = {
   hasCustomTime: boolean;
   timeLabel: string;
   statusLabel: string;
+};
+
+type SwapOption = {
+  assignmentId: string;
+  serviceId: string;
+  pairId: string;
+  pairName: string;
+  role: string;
+  serviceTitle: string;
+  serviceDateLabel: string;
 };
 
 function getPairLevelLabel(level: string) {
@@ -106,6 +127,10 @@ function getRoleLabel(role: string) {
     default:
       return "Chung";
   }
+}
+
+function formatDateTime(value: string) {
+  return new Date(value).toLocaleString("vi-VN");
 }
 
 function calculateAutoPoint(serviceDate: string, servicePeriod: ServicePeriod, customTime: string) {
@@ -209,7 +234,13 @@ function getFormStateFromService(service: ServiceItem) {
   };
 }
 
-export default function AdminServicesPanel({ selectedWeek, targetWeekStart, services, pairs }: Props) {
+export default function AdminServicesPanel({
+  selectedWeek,
+  targetWeekStart,
+  services,
+  pairs,
+  scheduleConfirmations,
+}: Props) {
   const router = useRouter();
   const weekLabel = selectedWeek === "current" ? "tuần này" : "tuần sau";
   const defaultDate = targetWeekStart;
@@ -221,6 +252,8 @@ export default function AdminServicesPanel({ selectedWeek, targetWeekStart, serv
   const [editingServiceId, setEditingServiceId] = useState("");
   const [assignServiceId, setAssignServiceId] = useState("");
   const [assignPairId, setAssignPairId] = useState("");
+  const [swapFirstAssignmentId, setSwapFirstAssignmentId] = useState("");
+  const [swapSecondAssignmentId, setSwapSecondAssignmentId] = useState("");
   const [loading, setLoading] = useState("");
   const [message, setMessage] = useState<{ type: "" | "error" | "success"; text: string }>({
     type: "",
@@ -266,6 +299,47 @@ export default function AdminServicesPanel({ selectedWeek, targetWeekStart, serv
     [pairs, selectedAssignableService],
   );
 
+  const swappableAssignments = useMemo<SwapOption[]>(
+    () =>
+      services.flatMap((service) => {
+        const display = serviceDisplayMap.get(service.id) ?? buildServiceDisplay(service);
+        return service.assignments.map((assignment) => ({
+          assignmentId: assignment.id,
+          serviceId: service.id,
+          pairId: assignment.pairId,
+          pairName: assignment.pairName,
+          role: assignment.role,
+          serviceTitle: display.title,
+          serviceDateLabel: display.dateLabel,
+        }));
+      }),
+    [serviceDisplayMap, services],
+  );
+
+  const selectedSwapFirst = useMemo(
+    () => swappableAssignments.find((item) => item.assignmentId === swapFirstAssignmentId) ?? null,
+    [swapFirstAssignmentId, swappableAssignments],
+  );
+
+  const swapSecondOptions = useMemo(
+    () =>
+      swappableAssignments.filter((item) => {
+        if (!selectedSwapFirst) {
+          return item.assignmentId !== swapFirstAssignmentId;
+        }
+
+        return (
+          item.assignmentId !== selectedSwapFirst.assignmentId &&
+          item.serviceId !== selectedSwapFirst.serviceId &&
+          item.pairId !== selectedSwapFirst.pairId
+        );
+      }),
+    [selectedSwapFirst, swapFirstAssignmentId, swappableAssignments],
+  );
+
+  const viewedCount = scheduleConfirmations.filter((item) => Boolean(item.acknowledgedAt)).length;
+  const unviewedCount = scheduleConfirmations.length - viewedCount;
+
   const resolvedPreviewTime = customTime.trim() || SERVICE_TIME_SLOTS[servicePeriod].defaultTime;
   const autoTitle = buildServiceTitle(serviceDate, servicePeriod, customTime);
   const isEditing = Boolean(editingServiceId);
@@ -290,6 +364,11 @@ export default function AdminServicesPanel({ selectedWeek, targetWeekStart, serv
     setServicePoints(formState.servicePoints);
     setMessage({ type: "", text: "" });
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function resetSwapForm() {
+    setSwapFirstAssignmentId("");
+    setSwapSecondAssignmentId("");
   }
 
   async function postJson(url: string, body: unknown) {
@@ -405,6 +484,48 @@ export default function AdminServicesPanel({ selectedWeek, targetWeekStart, serv
       router.refresh();
     } catch (error) {
       const text = error instanceof Error ? error.message : "Không thể gán cặp vào buổi lễ.";
+      toast.error(text);
+      setMessage({ type: "error", text });
+    } finally {
+      setLoading("");
+    }
+  }
+
+  async function handleSwapAssignments() {
+    try {
+      if (!swapFirstAssignmentId || !swapSecondAssignmentId) {
+        throw new Error("Chọn đủ 2 lượt gán để đổi cặp.");
+      }
+
+      if (!selectedSwapFirst) {
+        throw new Error("Lượt gán thứ nhất không còn hợp lệ.");
+      }
+
+      const selectedSwapSecond = swapSecondOptions.find(
+        (item) => item.assignmentId === swapSecondAssignmentId,
+      );
+
+      if (!selectedSwapSecond) {
+        throw new Error("Lượt gán thứ hai không còn hợp lệ.");
+      }
+
+      const confirmMessage = `Bạn có chắc muốn đổi cặp ${selectedSwapFirst.pairName} (${selectedSwapFirst.serviceDateLabel} · ${selectedSwapFirst.serviceTitle}) với cặp ${selectedSwapSecond.pairName} (${selectedSwapSecond.serviceDateLabel} · ${selectedSwapSecond.serviceTitle}) không?`;
+      if (!window.confirm(confirmMessage)) {
+        return;
+      }
+
+      setLoading("swap-assignments");
+      setMessage({ type: "", text: "" });
+      await postJson("/api/admin/services/swap", {
+        firstAssignmentId: swapFirstAssignmentId,
+        secondAssignmentId: swapSecondAssignmentId,
+      });
+      toast.success("Đã đổi cặp giữa hai buổi lễ.");
+      setMessage({ type: "success", text: "Đã đổi cặp giữa hai buổi lễ và tự động hủy xác nhận xem lịch cũ của các thành viên liên quan." });
+      resetSwapForm();
+      router.refresh();
+    } catch (error) {
+      const text = error instanceof Error ? error.message : "Không thể đổi cặp giữa hai buổi lễ.";
       toast.error(text);
       setMessage({ type: "error", text });
     } finally {
@@ -637,6 +758,56 @@ export default function AdminServicesPanel({ selectedWeek, targetWeekStart, serv
           {loading === "assign-service" ? "Đang gán..." : "Gán vào buổi lễ"}
         </button>
 
+        <div className="line-separator" />
+
+        <div>
+          <div className="section-kicker">Đổi cặp giúp lễ</div>
+          <h3 style={{ margin: "8px 0 12px" }}>Đổi cặp giữa hai buổi lễ</h3>
+        </div>
+
+        <div className="note-box">
+          Chọn hai lượt gán đã có sẵn để đổi cặp cho nhau.
+          <br />Sau khi đổi, hệ thống sẽ tự hủy trạng thái “đã xem lịch” cũ của các thành viên liên quan để admin biết ai cần xem lại lịch mới.
+        </div>
+
+        <select
+          className="input"
+          value={swapFirstAssignmentId}
+          onChange={(event) => {
+            setSwapFirstAssignmentId(event.target.value);
+            setSwapSecondAssignmentId("");
+          }}
+        >
+          <option value="">Chọn lượt gán thứ nhất</option>
+          {swappableAssignments.map((item) => (
+            <option key={item.assignmentId} value={item.assignmentId}>
+              {item.serviceDateLabel} · {item.serviceTitle} · {item.pairName} ({getRoleLabel(item.role)})
+            </option>
+          ))}
+        </select>
+
+        <select
+          className="input"
+          value={swapSecondAssignmentId}
+          onChange={(event) => setSwapSecondAssignmentId(event.target.value)}
+        >
+          <option value="">Chọn lượt gán thứ hai</option>
+          {swapSecondOptions.map((item) => (
+            <option key={item.assignmentId} value={item.assignmentId}>
+              {item.serviceDateLabel} · {item.serviceTitle} · {item.pairName} ({getRoleLabel(item.role)})
+            </option>
+          ))}
+        </select>
+
+        <div className="button-row">
+          <button className="button-primary" type="button" onClick={handleSwapAssignments} disabled={loading === "swap-assignments"}>
+            {loading === "swap-assignments" ? "Đang đổi..." : "Đổi cặp cho nhau"}
+          </button>
+          <button className="button-secondary" type="button" onClick={resetSwapForm} disabled={loading === "swap-assignments"}>
+            Xóa lựa chọn đổi cặp
+          </button>
+        </div>
+
         {message.text ? (
           <div className={message.type === "error" ? "form-error" : "form-success"}>{message.text}</div>
         ) : null}
@@ -647,6 +818,60 @@ export default function AdminServicesPanel({ selectedWeek, targetWeekStart, serv
           <div className="section-kicker">Danh sách buổi lễ</div>
           <h2 style={{ margin: "8px 0 0" }}>Buổi lễ đã tạo {weekLabel}</h2>
         </div>
+
+        <div className="card card-soft section-pad stack-sm">
+          <div className="section-heading">
+            <div>
+              <div className="list-title">Xác nhận đã xem lịch</div>
+              <div className="list-meta">Theo dõi thành viên đã xem lịch phục vụ {weekLabel}</div>
+            </div>
+            <div className="button-row" style={{ justifyContent: "flex-end" }}>
+              <span className="badge badge-success">Đã xem: {viewedCount}</span>
+              <span className="badge badge-warning">Chưa xem: {unviewedCount}</span>
+            </div>
+          </div>
+
+          {scheduleConfirmations.length === 0 ? (
+            <div className="empty-state">Tuần đang xem chưa có thành viên nào có lịch để theo dõi xác nhận.</div>
+          ) : (
+            <div className="stack-sm">
+              {scheduleConfirmations.map((item) => (
+                <div key={item.userId} className="list-card list-card-column-mobile" style={{ alignItems: "flex-start" }}>
+                  <div style={{ flex: 1 }}>
+                    <div className="list-title">{item.name || item.email}</div>
+                    <div className="list-subtitle">{item.email}</div>
+                    <div className="list-meta">
+                      Cặp: {item.pairName} · {item.totalAssignments} buổi trong {weekLabel}
+                    </div>
+                    <div className="list-meta" style={{ marginTop: 6 }}>
+                      {item.assignmentLabels.join(" · ")}
+                    </div>
+                  </div>
+
+                  <div style={{ textAlign: "right" }}>
+                    {item.acknowledgedAt ? (
+                      <>
+                        <span className="badge badge-success">Đã xem lịch</span>
+                        <div className="list-meta" style={{ marginTop: 6 }}>
+                          Lúc {formatDateTime(item.acknowledgedAt)}
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <span className="badge badge-warning">Chưa xem lịch</span>
+                        <div className="list-meta" style={{ marginTop: 6 }}>
+                          Cần nhắc xem lại lịch mới nhất.
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="line-separator" />
 
         {services.length === 0 ? (
           <div className="empty-state">{selectedWeek === "current" ? "Tuần này" : "Tuần sau"} hiện chưa có buổi lễ nào.</div>

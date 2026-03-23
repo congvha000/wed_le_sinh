@@ -58,6 +58,15 @@ export default async function AdminServicesPage({ searchParams }: AdminServicesP
             isLeader: member.isLeader,
           })),
         }))}
+        scheduleConfirmations={data.scheduleConfirmations.map((item) => ({
+          userId: item.userId,
+          email: item.email,
+          name: item.name,
+          pairName: item.pairName,
+          acknowledgedAt: item.acknowledgedAt?.toISOString() ?? null,
+          totalAssignments: item.totalAssignments,
+          assignmentLabels: item.assignmentLabels,
+        }))}
       />
     </WorkspaceShell>
   );

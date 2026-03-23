@@ -2,7 +2,16 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getUserContext } from "@/lib/get-user-context";
 import { syncPairTotals } from "@/lib/pair-point-sync";
-import { addMonths, formatDateInputValue, formatMonthLabel, getMonthKey, getNextWeekStart, startOfMonth } from "@/lib/date-utils";
+import {
+  addDays,
+  addMonths,
+  formatDateInputValue,
+  formatMonthLabel,
+  getCurrentWeekStart,
+  getMonthKey,
+  getNextWeekStart,
+  startOfMonth,
+} from "@/lib/date-utils";
 
 export async function requireUserContext() {
   const ctx = await getUserContext();
@@ -35,7 +44,7 @@ export async function getUserPageData() {
   const rollingEnd = addMonths(startOfMonth(new Date()), 1);
   const now = new Date();
 
-  const [pairMember, busyWindow] = (await Promise.all([
+  const [pairMember, busyWindow, scheduleAcks] = (await Promise.all([
     prisma.pairMember.findFirst({
       where: { userId: ctx.user.id },
       include: {
@@ -104,7 +113,16 @@ export async function getUserPageData() {
     prisma.busyWindow.findUnique({
       where: { weekStart: nextWeekStart },
     }),
-  ])) as [any, any];
+    prisma.scheduleAck.findMany({
+      where: {
+        userId: ctx.user.id,
+      },
+      select: {
+        weekStart: true,
+        createdAt: true,
+      },
+    }),
+  ])) as [any, any, Array<{ weekStart: Date; createdAt: Date }>];
 
   const pair = pairMember?.pair ?? null;
 
@@ -185,6 +203,40 @@ export async function getUserPageData() {
     ? pair.busyRequests.reduce((set, item) => set.add(toDateKey(item.busyDate)), new Set<string>()).size
     : 0;
 
+  const scheduleAckMap = new Map(
+    scheduleAcks.map((item) => [formatDateInputValue(item.weekStart), item.createdAt] as const),
+  );
+
+  const scheduleWeeksMap = new Map<
+    string,
+    {
+      weekStart: string;
+      weekEnd: string;
+      acknowledgedAt: string | null;
+      assignments: typeof pair.assignments;
+    }
+  >();
+
+  for (const assignment of pair?.assignments ?? []) {
+    const weekStart = getCurrentWeekStart(assignment.service.startsAt);
+    const weekStartKey = formatDateInputValue(weekStart);
+
+    if (!scheduleWeeksMap.has(weekStartKey)) {
+      scheduleWeeksMap.set(weekStartKey, {
+        weekStart: weekStartKey,
+        weekEnd: formatDateInputValue(addDays(weekStart, 6)),
+        acknowledgedAt: scheduleAckMap.get(weekStartKey)?.toISOString() ?? null,
+        assignments: [],
+      });
+    }
+
+    scheduleWeeksMap.get(weekStartKey)!.assignments.push(assignment);
+  }
+
+  const scheduleWeeks = Array.from(scheduleWeeksMap.values()).sort((a, b) =>
+    a.weekStart.localeCompare(b.weekStart),
+  );
+
   return {
     ctx,
     pair,
@@ -200,5 +252,6 @@ export async function getUserPageData() {
     partnerBusyRequest,
     partnerName: partnerMember?.user.name || partnerMember?.user.email || null,
     legacyBusyDates: legacyBusyRequests.map((item) => item.busyDate),
+    scheduleWeeks,
   };
 }
